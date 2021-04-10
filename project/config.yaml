@@ -1,0 +1,14 @@
+targets:
+  - SailfishOS-4.0.1.48-i486
+
+rpms: RPMS
+
+buildoptions: -j4
+
+provides:
+  spec/rrdtool.spec:
+    - pkgconfig(librrd)
+
+macros:
+  - sailfishos 4.0
+  

@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+
+import argparse
+import glob
+import os
+import pathlib
+import subprocess
+import sys
+import yaml # pip PyYAML
+
+def query(specname, q, macros = []):
+    cmd = ['rpmspec', '-q', q]
+    for m in macros:
+        cmd.append('--define=%s' % m)
+    cmd.append(specname)
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode:
+        print('Error while executing rpmspec')
+        print('STDOUT:\n', proc.stdout.decode('utf-8'))
+        print('STDERR:\n', proc.stderr.decode('utf-8'))
+        sys.exit(-2)
+        
+    stdout = proc.stdout.decode('utf-8')
+    result = set()
+    for l in stdout.split('\n'):
+        r = l.split()
+        if len(r) > 0:
+            result.add(r[0])
+    return result
+    
+def qbuildrequires(specname, macros = []):
+    return query(specname, '--buildrequires', macros)
+
+def qprovides(specname, macros = []):
+    return query(specname, '--provides', macros)
+
+# definition of dirs
+def rpmdir(root, tool):
+    return os.path.join(root, tool)
+
+def builddir(tool):
+    return os.path.join('build', tool)
+
+def targetdir(tool):
+    return os.path.join(builddir(tool), 'target')
+
+# processing of targets
+def target_dir(name):
+    return os.path.join(name, '.directory')
+
+def target_builddir(tool):
+    return target_dir(builddir(tool))
+
+def target_targetdir(tool):
+    return target_dir(targetdir(tool))
+
+def target_rpmdir(root, tool):
+    return target_dir(rpmdir(root, tool))
+
+def target_generic(name, tool):
+    return os.path.join(targetdir(tool), name)
+
+def target_spec(s, tool):
+    return target_generic(os.path.basename(s), tool)
+
+def target_provides(p, tool):
+    return target_generic(p, tool)
+
+# make snippets
+def make_dir(dname):
+    return \
+        target_dir(dname) + ':\n' + \
+        '\tmkdir -p ' + dname + '\n' + \
+        '\ttouch ' + target_dir(dname) + '\n' + \
+        '\n'
+
+def make_provides(p, spec, tool):
+    t = target_provides(p, tool)
+    s = target_spec(spec, tool)
+    return '%s: %s %s\n\ttouch %s\n\n' % (t, target_targetdir(tool), s, t)
+
+def make_spec(spec, req, tool, rpmroot, buildoptions):
+    make = target_spec(spec, tool) + ': %s %s %s %s ' % (target_targetdir(tool),
+                                                         target_builddir(tool),
+                                                         target_rpmdir(rpmroot, tool),
+                                                         spec)
+    make += ' '.join([target_provides(i, tool) for i in req])
+    make += '\n'
+    # determine src and spec abs path
+    ## handle case where we can have relative symbolic links
+    ## as well as rpm within the source dir which is symlink.
+    ## for these cases, resolve symlink late
+    bdir = os.path.join(builddir(tool), os.path.basename(spec))
+    slink = os.readlink(spec)
+    srcpath = os.path.dirname(os.path.dirname(slink))
+    if not os.path.isabs(srcpath):
+        srcpath = os.path.abspath( os.path.join(os.path.dirname(spec), srcpath) )
+    specpath = os.path.abspath(spec)
+    # write build section
+    make += '\t' + 'rm -rf %s\n' % bdir
+    make += '\t' + 'mkdir -p %s\n' % bdir
+    make += '\t' + 'sfdk config no-fix-version\n'
+    make += '\t' + 'sfdk config target=' + tool + '\n'
+    make += '\t' + 'sfdk config output-dir=' + os.path.abspath(rpmdir(rpmroot, tool)) + '\n'
+    make += '\t' + 'sfdk config specfile=' + specpath + '\n'
+    make += '\t' + '(cd %s && sfdk build %s %s)\n' % (bdir, buildoptions, srcpath)
+    # finalize
+    make += '\ttouch ' + target_spec(spec, tool) + '\n'
+    make += '\n'
+    return make
+
+
+##########################################################
+## main
+
+parser = argparse.ArgumentParser(description='Generate project build files')
+
+parser.add_argument('project_directory', help='Directory containing project files')
+
+args = parser.parse_args()
+
+project = args.project_directory
+if not os.path.isdir(project):
+    print('Project directory does not exist or is not a directory:', project)
+    sys.exit(-1)
+
+# change to project dir
+os.chdir(project)
+
+# load config
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
+
+targets = config.get('targets', [])
+rpms = config.get('rpms', '')
+macros = config.get('macros', [])
+buildoptions = config.get('buildoptions', '')
+specdir = "spec"
+
+if len(targets) < 1:
+    print('No targets specified in the project config.yaml')
+    sys.exit(-1)
+if len(rpms) < 1:
+    print('No RPMS directory specified in the project config.yaml')
+    sys.exit(-1)
+
+# load RPM file names
+specs = [f for f in glob.glob(os.path.join(specdir,"*.spec"))]
+
+# determine build requirements provided and used by packages in the project
+provides = set()
+requires = set()
+spec_requires = dict()
+spec_provides = dict()
+for s in specs:
+    br = qbuildrequires(s, macros)
+    requires = requires.union(br)
+    spec_requires[s] = br
+
+    pr = qprovides(s, macros)
+    provides = provides.union(pr)
+    spec_provides[s] = pr
+
+# dependencies provided by local packages
+dependencies = provides.intersection(requires)
+
+# drop all provides and requirements that are not related to packages in the project
+spec_requires = {k: dependencies.intersection(v) for k,v in spec_requires.items()}
+spec_provides = {k: dependencies.intersection(v) for k,v in spec_provides.items()}
+
+# generate Makefile
+main_deps = ""
+
+make = "# This is generated Makefile and can be overwritten by a script\n\n"
+make += 'all: all_packages\n\n'
+
+for tool in targets:
+    main_deps += " ".join([ target_spec(s, tool) for s in specs ])
+
+    # create directories
+    make += make_dir(builddir(tool))
+    make += make_dir(targetdir(tool))
+    make += make_dir(rpmdir(rpms, tool))
+
+    for s in specs:
+        # provides targets
+        for p in spec_provides[s]:
+            make += make_provides(p, s, tool)
+
+        make += make_spec(s, spec_requires[s], tool, rpms, buildoptions)
+    
+make += 'all_packages: %s\n\techo All done\n\n' % main_deps
+
+# disable parallel execution
+make += '.NOTPARALLEL:\n\n'
+
+print(make)
+
+f = open("Makefile", "w")
+f.write(make)
+
+
