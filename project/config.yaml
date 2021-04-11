@@ -1,14 +1,16 @@
+project: collectd_sds
+
 targets:
   - SailfishOS-4.0.1.48-i486
+  - SailfishOS-4.0.1.48-aarch64
 
 rpms: RPMS
 
 buildoptions: -j4
 
+macros:
+  - sailfishos 4.0
+
 provides:
   spec/rrdtool.spec:
     - pkgconfig(librrd)
-
-macros:
-  - sailfishos 4.0
-  
