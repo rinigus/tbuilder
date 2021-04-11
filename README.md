@@ -56,6 +56,11 @@ The following fields are optional:
 * `macros` (list of strings) macros considered while parsing RPM SPEC
   and during the build.
 
+* `insource` (list of strings) SPEC packages that have to be built
+  inside source directory. In this case, the sources will be copied
+  into the build directory and the build will be run with the copied
+  sources.
+
 * `provides` (dict with list of string values) additional symbols
   provided by RPM SPEC that are not detected by `rpmspec` query but
   can be used by other packages. This option is added for handling 

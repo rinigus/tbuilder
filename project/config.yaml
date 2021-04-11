@@ -12,5 +12,12 @@ macros:
   - sailfishos 4.0
 
 provides:
-  spec/rrdtool.spec:
-    - pkgconfig(librrd)
+  spec/flatpak.spec:
+     - pkgconfig(flatpak)
+  spec/ostree.spec:
+     - pkgconfig(ostree-1)
+  spec/libappstream-glib.spec:
+     - pkgconfig(appstream-glib)
+
+insource:
+  - spec/libappstream-glib.spec
