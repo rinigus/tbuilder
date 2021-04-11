@@ -98,11 +98,16 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros):
         srcpath = os.path.abspath( os.path.join(os.path.dirname(spec), srcpath) )
     specpath = os.path.abspath(spec)
     # build options for rpmbuild
-    if len(macros) > 0:
-        rpmbuild = "-- " + " ".join(['--define="%s"' % m for m in macros])
-    else:
-        rpmbuild = ""
+    ## not supported due to #2
+    # if len(macros) > 0:
+    #     rpmbuild = "-- " + " ".join(['--define="%s"' % m for m in macros])
+    # else:
+    #     rpmbuild = ""
+    rpmbuild = "" # workaround
     # write build section
+    make += '\t' + '@echo\n'
+    make += '\t' + '@echo Building %s\n' % spec
+    make += '\t' + '@echo\n'
     make += '\t' + 'rm -rf %s\n' % bdir
     make += '\t' + 'mkdir -p %s\n' % bdir
     make += '\t' + 'sfdk config no-fix-version\n'
@@ -206,7 +211,7 @@ for tool in targets:
                           project_name = project_name, rpmroot = rpms,
                           buildoptions = buildoptions, macros = macros)
 
-make += 'all_packages: %s\n\techo All done\n\n' % main_deps
+make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
 
 # disable parallel execution
 make += '.NOTPARALLEL:\n\n'
