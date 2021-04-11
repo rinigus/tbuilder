@@ -97,6 +97,7 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros):
     if not os.path.isabs(srcpath):
         srcpath = os.path.abspath( os.path.join(os.path.dirname(spec), srcpath) )
     specpath = os.path.abspath(spec)
+    rpmpath = os.path.abspath(rpmdir(rpmroot, tool))
     # build options for rpmbuild
     ## not supported due to #2
     # if len(macros) > 0:
@@ -106,18 +107,18 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros):
     rpmbuild = "" # workaround
     # write build section
     make += '\t' + '@echo\n'
-    make += '\t' + '@echo Building %s\n' % spec
+    make += '\t' + '@echo Building %s for %s\n' % (spec, tool)
     make += '\t' + '@echo\n'
     make += '\t' + 'rm -rf %s\n' % bdir
     make += '\t' + 'mkdir -p %s\n' % bdir
     make += '\t' + 'sfdk config no-fix-version\n'
-    make += '\t' + 'sfdk config no-fix-version\n'
     make += '\t' + 'sfdk config target=' + tool + '\n'
-    make += '\t' + 'sfdk config output-dir=' + os.path.abspath(rpmdir(rpmroot, tool)) + '\n'
+    make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
     make += '\t' + 'sfdk config specfile=' + specpath + '\n'
     make += '\t' + 'sfdk config snapshot=%s \n' % project_name
     make += '\t' + '(cd %s && sfdk build %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
     # finalize
+    make += '\tcreaterepo ' + rpmpath + '\n'
     make += '\ttouch ' + target_spec(spec, tool) + '\n'
     make += '\n'
     return make

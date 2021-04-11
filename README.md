@@ -74,6 +74,8 @@ Requirements are
 - `rpmspec` in the PATH. Many distributions allow you to install it
   even when some other packaging format is used.
 
+- `createrepo` in the PATH.
+
 
 ## Drawbacks
 
