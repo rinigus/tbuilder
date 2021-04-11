@@ -77,7 +77,7 @@ def make_dir(dname):
 def make_provides(p, spec, tool):
     t = target_provides(p, tool)
     s = target_spec(spec, tool)
-    return '%s: %s %s\n\ttouch %s\n\n' % (t, target_targetdir(tool), s, t)
+    return "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
 
 def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros):
     make = target_spec(spec, tool) + ': %s %s %s %s ' % (target_targetdir(tool),
