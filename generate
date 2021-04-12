@@ -45,26 +45,30 @@ def targetdir(tool):
     return os.path.join(builddir(tool), 'target')
 
 # processing of targets
+def tf(s):
+    # replace chars that may cause issues for make and filesystem
+    return s.replace('(','_').replace(')','_')
+
 def target_dir(name):
-    return os.path.join(name, '.directory')
+    return tf(os.path.join(name, '.directory'))
 
 def target_builddir(tool):
-    return target_dir(builddir(tool))
+    return tf(target_dir(builddir(tool)))
 
 def target_targetdir(tool):
-    return target_dir(targetdir(tool))
+    return tf(target_dir(targetdir(tool)))
 
 def target_rpmdir(root, tool):
-    return target_dir(rpmdir(root, tool))
+    return tf(target_dir(rpmdir(root, tool)))
 
 def target_generic(name, tool):
-    return os.path.join(targetdir(tool), name)
+    return tf(os.path.join(targetdir(tool), name))
 
 def target_spec(s, tool):
-    return target_generic(os.path.basename(s), tool)
+    return tf(target_generic(os.path.basename(s), tool))
 
 def target_provides(p, tool):
-    return target_generic(p, tool)
+    return tf(target_generic(p, tool))
 
 # make snippets
 def make_dir(dname):
