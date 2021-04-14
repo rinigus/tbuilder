@@ -1,9 +1,8 @@
 # TBuilder
 
-This is a take on building projects defined by multiple RPM SPECs. It
-is targeting Sailfish OS and is using `sfdk` provided by Sailfish OS
-SDK. It works, but is rather limited and should be mainly considered
-for smaller projects.
+This is a builder for projects defined by multiple RPM SPECs. It is
+targeting Sailfish OS and is using `sfdk` provided by Sailfish OS
+SDK. 
 
 ## Use
 
