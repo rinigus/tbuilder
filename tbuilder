@@ -128,7 +128,14 @@ def add_rpm_targets(rpmfname, prov):
             f.write(rpmfname)
             f.close()
             del f
-        os.utime(tname, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        else:
+            # modify timestamp only if target provides is older than RPM.
+            # this is to avoid touching timestamps as much as possible.
+            # otherwise, have seen some rebuilds triggered by incorrect
+            # timestamps
+            sp = os.stat(tname)
+            if sp.st_mtime_ns < stat.st_mtime_ns:
+                os.utime(tname, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 
 # make snippets
 def make_dir(dname):
