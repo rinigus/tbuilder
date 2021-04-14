@@ -12,10 +12,10 @@ macros:
   - sailfishos 4.0
 
 provides:
-  spec/flatpak.spec:
+  flatpak.spec:
      - pkgconfig(flatpak)
-  spec/ostree.spec:
+  ostree.spec:
      - pkgconfig(ostree-1)
 
 insource:
-  - spec/libappstream-glib.spec
+  - libappstream-glib.spec

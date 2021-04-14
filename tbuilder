@@ -77,7 +77,7 @@ def qsystemhas(r, tool):
     return False
 
 def refreshsystem(tool):
-    print('Refreshing zypper caches for', tool)
+    print('Refreshing zypper cache for', tool)
     s, e = run_with_check("sfdk tools exec %s zypper refresh" % tool)
     print(s)
 
@@ -230,7 +230,13 @@ buildoptions = config.get('buildoptions', '')
 provides_extra = config.get('provides', dict())
 insource = config.get('insource', [])
 specdir = "spec"
+cachefname = "cache.yaml"
 
+# add subdir to required keys
+provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
+insource = [ os.path.join(specdir, k) for k in insource ]
+
+# check for required parameters
 if len(project_name) < 1:
     print('No project name specified in the project config.yaml')
     sys.exit(-1)
@@ -271,6 +277,16 @@ for tool in targets:
     os.makedirs(rdir, exist_ok = True)
     os.makedirs(bdir, exist_ok = True)
 
+    # load cache if it is available
+    current_cache = os.path.join(bdir, cachefname)
+    if os.path.exists(current_cache):
+        with open(current_cache, 'r') as f:
+            c = yaml.safe_load(f)
+            if isinstance(c, dict):
+                system_provided = set(c.get('system_provided', []))
+                system_missing = set(c.get('system_missing', []))
+
+    # start build loop
     Done = False
     while not Done:
 
@@ -312,6 +328,12 @@ for tool in targets:
                         s.missing.add(r)
 
         if checked_in_system: print()
+
+        # update cache
+        with open(current_cache, 'w') as f:
+            c = dict(system_provided = list(system_provided),
+                     system_missing = list(system_missing))
+            yaml.safe_dump(c, f)
 
         # summarize findings
         tomake = set()
