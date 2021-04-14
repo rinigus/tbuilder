@@ -147,11 +147,10 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
     specpath = os.path.abspath(spec)
     rpmpath = os.path.abspath(rpmdir(rpmroot, tool))
     # build options for rpmbuild
-    ## not supported due to #2
-    # if len(macros) > 0:
-    #     rpmbuild = "-- " + " ".join(['--define="%s"' % m for m in macros])
-    # else:
-    #     rpmbuild = ""
+    if len(macros) > 0:
+        rpmbuild = " " + " ".join(['--define="%s"' % m for m in macros])
+    else:
+        rpmbuild = ""
     rpmbuild = "" # workaround
     # write build section
     make += '\t' + '@echo\n'
