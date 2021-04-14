@@ -1,8 +1,8 @@
 # TBuilder
 
 This is a builder for projects defined by multiple RPM SPECs. It is
-targeting Sailfish OS and is using `sfdk` provided by Sailfish OS
-SDK. 
+targeting Sailfish OS and is using `sfdk` or `mb2/sb2` provided by
+Sailfish OS Application or Platform SDKs.
 
 ## Use
 
@@ -63,11 +63,16 @@ The following fields are optional:
 
 Requirements are
 
-- `sfdk` available in the PATH and working. Consider adding symlink
-  from some standard PATH directory to Sailfish SDO `bin/sfdk`. Check
-  that `sfdk` works, see
+- If using from host PC, `sfdk` available in the PATH and
+  working. Consider adding symlink from some standard PATH directory
+  to Sailfish SDO `bin/sfdk`. Check that `sfdk` works, see
   [Tutorial](https://sailfishos.org/wiki/Tutorial_-_Building_packages_-_advanced_techniques)
   for description.
+
+- If run from SDK shell, mb2/sb2 will be used. Note that you would
+  have to install `make` into that shell as `make` is not installed by
+  default in Application SDK. For that, login as root and run `zypper
+  in make`.
 
 - `rpmspec`, `rpm`, `createrepo` in the PATH. Many distributions allow
   you to install it even when some other packaging format is used.
