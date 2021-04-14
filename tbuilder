@@ -117,6 +117,18 @@ def target_spec(s, tool):
 def target_provides(p, tool):
     return tf(target_generic(p, tool))
 
+# add targets that are provided already
+def add_rpm_targets(rpmfname, prov):
+    stat = os.stat(rpmfname)
+    for p in prov:
+        tname = target_provides(p, tool)
+        if not os.path.exists(tname):
+            f = open(tname, "w")
+            f.write(rpmfname)
+            f.close()
+            del f
+        os.utime(tname, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
 # make snippets
 def make_dir(dname):
     return \
@@ -266,9 +278,8 @@ for tool in targets:
         for rpmfname in glob.glob(os.path.join(rdir, "*.rpm")):
             srcname = qbinsrcname(rpmfname)
             prov = qbinprovides(rpmfname)
-            if srcname not in specs:
-                print('Ignoring external package', srcname, rpmfname)
-            else:
+            add_rpm_targets(rpmfname, prov)
+            if srcname in specs:
                 specs[srcname].provides.update(prov)
                 local_provided.update(prov)
 
