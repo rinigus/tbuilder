@@ -115,6 +115,7 @@ def target_spec(s, tool):
     return tf(target_generic(os.path.basename(s), tool))
 
 def target_provides(p, tool):
+    p = p.replace('/', '_')
     return tf(target_generic(p, tool))
 
 # add targets that are provided already
