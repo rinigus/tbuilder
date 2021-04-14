@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+
+import argparse
+import glob
+import os
+import pathlib
+import subprocess
+import sys
+import yaml # pip PyYAML
+import xml.etree.ElementTree as ET
+
+def run_with_check(cmd):
+    if isinstance(cmd, str):
+        cmd = cmd.split()
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode:
+        print('Error while executing', cmd[0])
+        print('STDOUT:\n', proc.stdout.decode('utf-8'))
+        print('STDERR:\n', proc.stderr.decode('utf-8'))
+        sys.exit(-2)
+
+    return proc.stdout.decode('utf-8'), proc.stderr.decode('utf-8')
+
+def query(exe, specname, q, macros = []):
+    cmd = [exe, '-q', q]
+    for m in macros:
+        cmd.append('--define=%s' % m)
+    cmd.append(specname)
+    stdout, stderr = run_with_check(cmd)
+
+    # stdout = proc.stdout.decode('utf-8')
+    result = []
+    result_full = []
+    for l in stdout.split('\n'):
+        r = l.split()
+        if len(r) > 0:
+            result.append(r[0])
+    return result
+
+def qname(specname, macros = []):
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0].strip()
+
+def qbuildrequires(specname, macros = []):
+    return set(query('rpmspec', specname, '--buildrequires', macros))
+
+def qprovides(specname, macros = []):
+    return set(query('rpmspec', specname, '--provides', macros))
+
+def qname(specname, macros = []):
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0].strip()
+
+def qbinprovides(rpmname):
+    return set(query('rpm', rpmname, '--provides', macros))
+
+def qbinsrcname(rpmname):
+    s = query('rpm', rpmname, '--queryformat=%{SOURCERPM} ', macros)[0].strip()
+    return s.rsplit('-', 2)[0]
+
+def refreshsystem(tool):
+    print('Refreshing zypper caches for', tool)
+    s, e = run_with_check("sfdk tools exec %s zypper refresh" % tool)
+    print(s)
+
+def qsystemhas(r, tool):
+    # prepare sfdk to run
+    run_with_check("sfdk config target=" + tool)
+    run_with_check("sfdk config no-snapshot")
+
+    # zypper returns non-zero if failing to find
+    cmd = "sfdk build-shell zypper -x search --provides --match-exact".split()
+    cmd.append(r)
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode:
+        return False # assume that it just failed to find
+    s = proc.stdout.decode('utf-8')
+    root = ET.fromstring(s)
+    for i in root.iter('solvable'):
+        return True
+    return False
+
+# definition of dirs
+def rpmdir(root, tool):
+    return os.path.join(root, tool)
+
+def builddir(tool):
+    return os.path.join('build', tool)
+
+def targetdir(tool):
+    return os.path.join(builddir(tool), 'target')
+
+# processing of targets
+def tf(s):
+    # replace chars that may cause issues for make and filesystem
+    return s.replace('(','_').replace(')','_')
+
+def target_dir(name):
+    return tf(os.path.join(name, '.directory'))
+
+def target_builddir(tool):
+    return tf(target_dir(builddir(tool)))
+
+def target_targetdir(tool):
+    return tf(target_dir(targetdir(tool)))
+
+def target_rpmdir(root, tool):
+    return tf(target_dir(rpmdir(root, tool)))
+
+def target_generic(name, tool):
+    return tf(os.path.join(targetdir(tool), name))
+
+def target_spec(s, tool):
+    return tf(target_generic(os.path.basename(s), tool))
+
+def target_provides(p, tool):
+    return tf(target_generic(p, tool))
+
+# make snippets
+def make_dir(dname):
+    return \
+        target_dir(dname) + ':\n' + \
+        '\tmkdir -p ' + dname + '\n' + \
+        '\ttouch ' + target_dir(dname) + '\n' + \
+        '\n'
+
+def make_provides(p, spec, tool):
+    t = target_provides(p, tool)
+    s = target_spec(spec, tool)
+    return "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
+
+def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, insource):
+    make = target_spec(spec, tool) + ': %s %s %s %s ' % (target_targetdir(tool),
+                                                         target_builddir(tool),
+                                                         target_rpmdir(rpmroot, tool),
+                                                         spec)
+    make += ' '.join([target_provides(i, tool) for i in req])
+    make += '\n'
+    # determine src and spec abs path
+    ## handle case where we can have relative symbolic links
+    ## as well as rpm within the source dir which is symlink.
+    ## for these cases, resolve symlink late
+    sbase = os.path.basename(spec)
+    bdir = os.path.join(builddir(tool), sbase)
+    slink = os.readlink(spec)
+    srcpath = os.path.dirname(os.path.dirname(slink))
+    if not os.path.isabs(srcpath):
+        srcpath = os.path.abspath( os.path.join(os.path.dirname(spec), srcpath) )
+    specpath = os.path.abspath(spec)
+    rpmpath = os.path.abspath(rpmdir(rpmroot, tool))
+    # build options for rpmbuild
+    ## not supported due to #2
+    # if len(macros) > 0:
+    #     rpmbuild = "-- " + " ".join(['--define="%s"' % m for m in macros])
+    # else:
+    #     rpmbuild = ""
+    rpmbuild = "" # workaround
+    # write build section
+    make += '\t' + '@echo\n'
+    make += '\t' + '@echo Building %s for %s\n' % (spec, tool)
+    make += '\t' + '@echo\n'
+    make += '\t' + 'rm -rf %s\n' % bdir
+    make += '\t' + 'mkdir -p %s\n' % bdir
+    if insource:
+        make += '\t' + 'rsync -a %s/ %s/\n' % (srcpath, bdir)
+        srcpath = "."
+    make += '\t' + 'sfdk config no-fix-version\n'
+    make += '\t' + 'sfdk config target=' + tool + '\n'
+    make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
+    make += '\t' + 'sfdk config specfile=' + specpath + '\n'
+    make += '\t' + 'sfdk config snapshot=%s \n' % project_name
+    make += '\t' + '(cd %s && sfdk build %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
+    # finalize
+    make += '\tcreaterepo ' + rpmpath + '\n'
+    make += '\ttouch ' + target_spec(spec, tool) + '\n'
+    make += '\n'
+    return make
+
+
+class Spec:
+    def __init__(self, s, macros):
+        self.specfname  = s
+        self.name = qname(s, macros)
+        self.requires = qbuildrequires(s, macros)
+        self.provides = set()
+        self.missing = set()
+
+    def __str__(self):
+        return "{name}: {specfname}  / requires: {requires} / provides: {provides} / missing: {missing}".format(**self.__dict__)
+
+##########################################################
+## main
+
+parser = argparse.ArgumentParser(description='Generate project build files')
+
+parser.add_argument('project_directory', help='Directory containing project files')
+
+args = parser.parse_args()
+
+project = args.project_directory
+if not os.path.isdir(project):
+    print('Project directory does not exist or is not a directory:', project)
+    sys.exit(-1)
+
+# change to project dir
+os.chdir(project)
+
+# load config
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
+
+project_name = config.get('project', '')
+targets = config.get('targets', [])
+rpms = config.get('rpms', '')
+macros = config.get('macros', [])
+buildoptions = config.get('buildoptions', '')
+provides_extra = config.get('provides', dict())
+insource = config.get('insource', [])
+specdir = "spec"
+
+if len(project_name) < 1:
+    print('No project name specified in the project config.yaml')
+    sys.exit(-1)
+if len(targets) < 1:
+    print('No targets specified in the project config.yaml')
+    sys.exit(-1)
+if len(rpms) < 1:
+    print('No RPMS directory specified in the project config.yaml')
+    sys.exit(-1)
+
+# main loop
+summary = {}
+for tool in targets:
+    print('Starting builds for', tool, '\n')
+
+    # initialize for each target
+    #########################################!!!!!!!!!!!refreshsystem(tool)
+
+    # load RPMs and their properties
+    specs = {}
+    for f in glob.glob(os.path.join(specdir,"*.spec")):
+        s = Spec(f, macros)
+        specs[ s.name ] = s
+
+    print('Loaded SPECs:\n')
+    for _, s in specs.items():
+        print(s.specfname, ':', s.name)
+    print()
+
+    system_provided = set()
+    system_missing = set()
+    last_make = set()
+
+    # prepare directories
+    rdir = rpmdir(rpms, tool)
+    bdir = builddir(tool)
+    os.makedirs(rdir, exist_ok = True)
+    os.makedirs(bdir, exist_ok = True)
+
+    Done = False
+    while not Done:
+
+        # query provided symbols in current ready RPMs
+        local_provided = set()
+        for rpmfname in glob.glob(os.path.join(rdir, "*.rpm")):
+            srcname = qbinsrcname(rpmfname)
+            prov = qbinprovides(rpmfname)
+            if srcname not in specs:
+                print('Ignoring external package', srcname, rpmfname)
+            else:
+                specs[srcname].provides.update(prov)
+                local_provided.update(prov)
+
+        if len(local_provided) > 0:
+            print('Available local provided symbols:', " ".join(local_provided), "\n")
+
+        # determine whether packages are missing something preventing the build
+        checked_in_system = False
+        for _, s in specs.items():
+            s.missing = set()
+            for r in s.requires:
+                if r in system_provided or r in local_provided:
+                    continue
+                elif r in system_missing:
+                    s.missing.add(r)
+                else:
+                    checked_in_system = True
+                    print('Check for availibility in the system:', r, flush=True, end=' : ')
+                    in_system = qsystemhas(r, tool)
+
+                    if in_system:
+                        print('Available')
+                        system_provided.add(r)
+                        continue
+                    else:
+                        print('Requires building')
+                        system_missing.add(r)
+                        s.missing.add(r)
+
+        if checked_in_system: print()
+
+        # summarize findings
+        tomake = set()
+        skipped = set()
+        for k, s in specs.items():
+            if len(s.missing) > 0:
+                print('{name}({spec}) has missing dependencies:'.format(name = s.name,
+                                                                        spec = s.specfname),
+                      " ".join(s.missing))
+                skipped.add(k)
+            else:
+                tomake.add(k)
+        print()
+
+        if tomake == last_make:
+            print('Last and current list of packages that can be built is the same')
+            print('Nothing new, stopping for target', tool)
+            break
+
+        print('Packages included into the current build:', " ".join(tomake))
+
+        # generate Makefile
+        main_deps = ""
+
+        make = "# This is generated Makefile and can be overwritten by a script\n\n"
+        make += 'all: all_packages\n\n'
+
+        main_deps += " ".join([ target_spec(specs[s].specfname, tool) for s in tomake ]) + " "
+
+        # create directories
+        make += make_dir(builddir(tool))
+        make += make_dir(targetdir(tool))
+        make += make_dir(rpmdir(rpms, tool))
+
+        for k, s in specs.items():
+            # skip packages that we cannot build yet
+            if k not in tomake:
+                continue
+
+            # provides targets
+            for p in s.provides:
+                make += make_provides(p, s.specfname, tool)
+
+            make += make_spec(spec = s.specfname,
+                              req = s.requires - system_provided,
+                              tool = tool,
+                              project_name = project_name, rpmroot = rpms,
+                              buildoptions = buildoptions, macros = macros,
+                              insource = (s.specfname in insource))
+
+        make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
+
+        # disable parallel execution
+        make += '.NOTPARALLEL:\n\n'
+
+        # write Makefile
+        makefname = os.path.join(bdir, "Makefile")
+        with open(makefname, "w") as f:
+            f.write(make)
+
+        # start make in the background
+        logfname = os.path.join(bdir, "build.log")
+        print('Starting build with the log available at', logfname)
+        with open(logfname, "w") as flog:
+            po = subprocess.Popen(["make", "-f", makefname],
+                                  bufsize = 0,
+                                  stdout=flog, stderr=subprocess.STDOUT)
+            result = po.wait()
+            if result != 0:
+                print('Error while running Make. See log for details')
+                summary[tool] = 'Error while running Make. See {log} for details'.format(log = logfname)
+                break
+            else:
+                print('Build successful\n')
+
+        # update conditions
+        last_make = tomake
+        if len(skipped) == 0:
+            Done = True
+
+        # current summary for this toolkit
+        summary[tool] = "Build packages: " + " ".join(tomake) + "\nSkipped packages: " + " ".join(skipped)
+
+
+print('\nAll builds finished\n')
+
+for t, s in summary.items():
+    print(t,':')
+    print(s, '\n\n')

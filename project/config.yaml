@@ -1,4 +1,4 @@
-project: collectd_sds
+project: flatpak
 
 targets:
   - SailfishOS-4.0.1.48-i486
@@ -16,8 +16,6 @@ provides:
      - pkgconfig(flatpak)
   spec/ostree.spec:
      - pkgconfig(ostree-1)
-  spec/libappstream-glib.spec:
-     - pkgconfig(appstream-glib)
 
 insource:
   - spec/libappstream-glib.spec

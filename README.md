@@ -19,19 +19,13 @@ subdirectory of the main source. This is common as SPECs are
 positioned under `rpm` directory. Using symlinks, the builder will be
 able to locate main source of the package in question.
 
-With the project defined, `generate` script will create `Makefile`. To
-build packages, run `make` in the project directory:
+With the project defined, `tbuilder` will handle dependencies and will
+build packages:
 
 ```
 cd project
-../generate .
-make
+../tbuilder .
 ```
-
-`make` will build one package in a time, according to the detected
-dependencies. See below (drawbacks) for main issue with the dependency
-detection.
-
 
 ## Configuration
 
@@ -62,8 +56,8 @@ The following fields are optional:
   sources.
 
 * `provides` (dict with list of string values) additional symbols
-  provided by RPM SPEC that are not detected by `rpmspec` query but
-  can be used by other packages. This option is added for handling 
+  provided by RPM SPEC. In general, it is not required as provided
+  symbols are detected automatically.
 
 
 ## Requirements
@@ -76,19 +70,5 @@ Requirements are
   [Tutorial](https://sailfishos.org/wiki/Tutorial_-_Building_packages_-_advanced_techniques)
   for description.
 
-- `rpmspec` in the PATH. Many distributions allow you to install it
-  even when some other packaging format is used.
-
-- `createrepo` in the PATH.
-
-
-## Drawbacks
-
-Main drawback is in inability to determine all symbols provided by a
-package. For example, `pkgconfig(lib)` is set to be provided
-automatically and can be used as a build requirement. Right now,
-`generate` script is not able to determine these package-provided
-symbols and will ignore them. So, maybe completely different approach
-should be taken. See issue
-[#1](https://github.com/rinigus/tbuilder/issues/1) for discussion on
-possible solutions.
+- `rpmspec`, `rpm`, `createrepo` in the PATH. Many distributions allow
+  you to install it even when some other packaging format is used.
