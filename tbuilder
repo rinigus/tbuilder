@@ -30,36 +30,34 @@ def query(exe, specname, q, macros = []):
 
     # stdout = proc.stdout.decode('utf-8')
     result = []
-    result_full = []
+    result_full = {}
     for l in stdout.split('\n'):
         r = l.split()
         if len(r) > 0:
-            result.append(r[0])
-    return result
+            rr = r[0].strip()
+            result.append(rr)
+            result_full[l.strip()] = rr
+    return result, result_full
 
 def qname(specname, macros = []):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0].strip()
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0][0]
 
 def qbuildrequires(specname, macros = []):
-    return set(query('rpmspec', specname, '--buildrequires', macros))
+    q, qf = query('rpmspec', specname, '--buildrequires', macros)
+    return set(q), qf
 
 def qprovides(specname, macros = []):
-    return set(query('rpmspec', specname, '--provides', macros))
+    return set(query('rpmspec', specname, '--provides', macros)[0])
 
 def qname(specname, macros = []):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0].strip()
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0][0]
 
 def qbinprovides(rpmname):
-    return set(query('rpm', rpmname, '--provides', macros))
+    return set(query('rpm', rpmname, '--provides', macros)[0])
 
 def qbinsrcname(rpmname):
-    s = query('rpm', rpmname, '--queryformat=%{SOURCERPM} ', macros)[0].strip()
+    s = query('rpm', rpmname, '--queryformat=%{SOURCERPM} ', macros)[0][0]
     return s.rsplit('-', 2)[0]
-
-def refreshsystem(tool):
-    print('Refreshing zypper caches for', tool)
-    s, e = run_with_check("sfdk tools exec %s zypper refresh" % tool)
-    print(s)
 
 def qsystemhas(r, tool):
     # prepare sfdk to run
@@ -77,6 +75,11 @@ def qsystemhas(r, tool):
     for i in root.iter('solvable'):
         return True
     return False
+
+def refreshsystem(tool):
+    print('Refreshing zypper caches for', tool)
+    s, e = run_with_check("sfdk tools exec %s zypper refresh" % tool)
+    print(s)
 
 # definition of dirs
 def rpmdir(root, tool):
@@ -178,7 +181,7 @@ class Spec:
     def __init__(self, s, macros):
         self.specfname  = s
         self.name = qname(s, macros)
-        self.requires = qbuildrequires(s, macros)
+        self.requires, self.requires_full = qbuildrequires(s, macros)
         self.provides = set()
         self.missing = set()
 
@@ -231,7 +234,8 @@ for tool in targets:
     print('Starting builds for', tool, '\n')
 
     # initialize for each target
-    #########################################!!!!!!!!!!!refreshsystem(tool)
+
+    refreshsystem(tool)
 
     # load RPMs and their properties
     specs = {}
@@ -275,8 +279,8 @@ for tool in targets:
         checked_in_system = False
         for _, s in specs.items():
             s.missing = set()
-            for r in s.requires:
-                if r in system_provided or r in local_provided:
+            for r, rsimple in s.requires_full.items():
+                if r in system_provided or rsimple in local_provided:
                     continue
                 elif r in system_missing:
                     s.missing.add(r)
@@ -288,6 +292,7 @@ for tool in targets:
                     if in_system:
                         print('Available')
                         system_provided.add(r)
+                        system_provided.add(rsimple)
                         continue
                     else:
                         print('Requires building')
