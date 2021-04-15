@@ -160,7 +160,6 @@ def targetdir(tool):
 def tf(s):
     # replace chars that may cause issues for make or filesystem
     return re.sub('[():%]', '_', s)
-    #return s.replace('(','_').replace(')','_').replace('/', '-').replace(':', '_').replace('%','_')
 
 def target_dir(name):
     return tf(os.path.join(name, '.directory'))
