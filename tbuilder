@@ -205,6 +205,8 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
     make += '\t' + '@echo\n'
     make += '\t' + '@echo Building %s for %s\n' % (spec, tool)
     make += '\t' + '@echo\n'
+    if not insource:
+        make += '\t' + 'rm -rf %s\n' % bdir
     make += '\t' + 'mkdir -p %s\n' % bdir
     if insource:
         make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
@@ -215,10 +217,10 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
         make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
         make += '\t' + 'sfdk config specfile=' + specpath + '\n'
         make += '\t' + 'sfdk config snapshot=%s \n' % project_name
-        make += '\t' + '(cd %s && sfdk build %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
+        make += '\t' + '(cd %s && sfdk build -d %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
     else:
         make += '\t' + \
-            '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build {bopts} {src} {rpmbuild})\n'.format(
+            '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
                 bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                 snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
