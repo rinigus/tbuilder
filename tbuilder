@@ -4,6 +4,7 @@ import argparse
 import glob
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -22,8 +23,54 @@ class Commands:
             print("Cannot find createrepo")
             sys.exit(-1)
 
+        # check whether to use sfdk or not
+        if shutil.which("mb2") is not None and shutil.which("sb2") is not None:
+            self.use_sfdk = False
+        elif shutil.which("sfdk") is not None:
+            self.use_sfdk = True
+        else:
+            print('Cannot find sfdk nor sb2/mb2')
+            sys.exit(-1)
+
     def createrepo(self, rpmpath):
         return commands._createrepo + ' ' + rpmpath
+
+    def makesection(self, tool, bdir, rpmpath, specpath, project_name,
+                    buildoptions, srcpath, rpmbuild):
+        make = ''
+        if self.use_sfdk:
+            make += '\t' + 'sfdk config no-fix-version\n'
+            make += '\t' + 'sfdk config target=' + tool + '\n'
+            make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
+            make += '\t' + 'sfdk config specfile=' + specpath + '\n'
+            make += '\t' + 'sfdk config snapshot=%s \n' % project_name
+            make += '\t' + '(cd %s && sfdk build -d %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
+        else:
+            make += '\t' + \
+                '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
+                    bdir = bdir, target = tool, output = rpmpath, spec = specpath,
+                    snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
+
+        return make
+
+
+    def refreshsystem(self, tool):
+        if self.use_sfdk:
+            return "sfdk tools exec %s zypper refresh" % tool
+        return "sb2 -t %s -R zypper refresh" % tool
+
+    def systemhas(self, tool):
+        if self.use_sfdk:
+            # prepare sfdk to run
+            run_with_check("sfdk config target=" + tool)
+            run_with_check("sfdk config no-snapshot")
+            cmd = "sfdk build-shell zypper -x search --provides --match-exact".split()
+        else:
+            cmd = "sb2 -t %s zypper -x search --provides --match-exact" % tool
+            cmd = cmd.split()
+        return cmd
+
+
 
 # global commands instance
 commands = Commands()
@@ -80,20 +127,11 @@ def qbinsrcname(rpmname, macros = []):
     s = query('rpm', rpmname, '--queryformat=%{SOURCERPM} ', macros, check_error=False)[0][0]
     return s.rsplit('-', 2)[0]
 
-def qsystemhas(r, tool, use_sfdk):
-    if use_sfdk:
-        # prepare sfdk to run
-        run_with_check("sfdk config target=" + tool)
-        run_with_check("sfdk config no-snapshot")
-
-        # zypper returns non-zero if failing to find
-        cmd = "sfdk build-shell zypper -x search --provides --match-exact".split()
-    else:
-        cmd = "sb2 -t %s zypper -x search --provides --match-exact" % tool
-        cmd = cmd.split()
-
+def qsystemhas(r, tool):
+    cmd = commands.systemhas(tool)
     cmd.append(r)
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # zypper returns non-zero if failing to find
     if proc.returncode:
         return False # assume that it just failed to find
     s = proc.stdout.decode('utf-8')
@@ -102,12 +140,9 @@ def qsystemhas(r, tool, use_sfdk):
         return True
     return False
 
-def refreshsystem(tool, use_sfdk):
+def refreshsystem(tool):
     print('Refreshing zypper cache for', tool)
-    if use_sfdk:
-        cmd = "sfdk tools exec %s zypper refresh" % tool
-    else:
-        cmd = "sb2 -t %s -R zypper refresh" % tool
+    cmd = commands.refreshsystem(tool)
     s, e = run_with_check(cmd)
     print(s)
 
@@ -123,8 +158,9 @@ def targetdir(tool):
 
 # processing of targets
 def tf(s):
-    # replace chars that may cause issues for make and filesystem
-    return s.replace('(','_').replace(')','_')
+    # replace chars that may cause issues for make or filesystem
+    return re.sub('[():%]', '_', s)
+    #return s.replace('(','_').replace(')','_').replace('/', '-').replace(':', '_').replace('%','_')
 
 def target_dir(name):
     return tf(os.path.join(name, '.directory'))
@@ -180,7 +216,7 @@ def make_provides(p, spec, tool):
     s = target_spec(spec, tool)
     return "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
 
-def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, insource, use_sfdk):
+def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, insource):
     make = target_spec(spec, tool) + ': %s %s %s %s ' % (target_targetdir(tool),
                                                          target_builddir(tool),
                                                          target_rpmdir(rpmroot, tool),
@@ -214,18 +250,10 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
     if insource:
         make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
         srcpath = "."
-    if use_sfdk:
-        make += '\t' + 'sfdk config no-fix-version\n'
-        make += '\t' + 'sfdk config target=' + tool + '\n'
-        make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
-        make += '\t' + 'sfdk config specfile=' + specpath + '\n'
-        make += '\t' + 'sfdk config snapshot=%s \n' % project_name
-        make += '\t' + '(cd %s && sfdk build -d %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
-    else:
-        make += '\t' + \
-            '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
-                bdir = bdir, target = tool, output = rpmpath, spec = specpath,
-                snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
+
+    make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
+                                 project_name = project_name, buildoptions = buildoptions,
+                                 srcpath = srcpath, rpmbuild = rpmbuild)
 
     # finalize
     make += '\t' + commands.createrepo(rpmpath) + '\n'
@@ -291,14 +319,6 @@ if len(rpms) < 1:
     print('No RPMS directory specified in the project config.yaml')
     sys.exit(-1)
 
-# check whether to use sfdk or not
-if shutil.which("mb2") is not None and shutil.which("sb2") is not None:
-    use_sfdk = False
-elif shutil.which("sfdk") is not None:
-    use_sfdk = True
-else:
-    print('Cannot find sfdk nor sb2/mb2')
-    sys.exit(-1)
 
 # main loop
 summary = {}
@@ -307,7 +327,7 @@ for tool in targets:
 
     # initialize for each target
 
-    refreshsystem(tool, use_sfdk)
+    refreshsystem(tool)
 
     # load RPMs and their properties
     specs = {}
@@ -368,7 +388,7 @@ for tool in targets:
                 else:
                     checked_in_system = True
                     print('Check for availibility in the system:', r, flush=True, end=' : ')
-                    in_system = qsystemhas(r, tool, use_sfdk)
+                    in_system = qsystemhas(r, tool)
 
                     if in_system:
                         print('Available')
@@ -435,8 +455,7 @@ for tool in targets:
                               tool = tool,
                               project_name = project_name, rpmroot = rpms,
                               buildoptions = buildoptions, macros = macros,
-                              insource = (s.specfname in insource),
-                              use_sfdk = use_sfdk)
+                              insource = (s.specfname in insource))
 
         make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
 
