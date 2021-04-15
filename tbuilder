@@ -10,6 +10,22 @@ import sys
 import yaml # pip PyYAML
 import xml.etree.ElementTree as ET
 
+# commands abstraction
+class Commands:
+    def __init__(self):
+        # check createrepo is with _c suffix
+        if shutil.which("createrepo_c") is not None:
+            self.createrepo = "createrepo_c"
+        elif shutil.which("createrepo") is not None:
+            self.createrepo = 'createrepo'
+        else:
+            print("Cannot find createrepo")
+            sys.exit(-1)
+
+# global commands instance
+commands = Commands()
+
+# helper functions
 def run_with_check(cmd, check_error=True):
     if isinstance(cmd, str):
         cmd = cmd.split()
@@ -185,15 +201,13 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
         rpmbuild = " " + " ".join(['--define="%s"' % m for m in macros])
     else:
         rpmbuild = ""
-    rpmbuild = "" # workaround
     # write build section
     make += '\t' + '@echo\n'
     make += '\t' + '@echo Building %s for %s\n' % (spec, tool)
     make += '\t' + '@echo\n'
-    make += '\t' + 'rm -rf %s\n' % bdir
     make += '\t' + 'mkdir -p %s\n' % bdir
     if insource:
-        make += '\t' + 'rsync -a %s/ %s/\n' % (srcpath, bdir)
+        make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
         srcpath = "."
     if use_sfdk:
         make += '\t' + 'sfdk config no-fix-version\n'
@@ -209,7 +223,7 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
                 snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
     # finalize
-    make += '\tcreaterepo ' + rpmpath + '\n'
+    make += '\t' + commands.createrepo + ' ' + rpmpath + '\n'
     make += '\ttouch ' + target_spec(spec, tool) + '\n'
     make += '\n'
     return make
