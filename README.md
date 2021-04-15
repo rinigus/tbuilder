@@ -52,7 +52,8 @@ The following fields are optional:
 * `insource` (list of strings) SPEC packages that have to be built
   inside source directory. In this case, the sources will be copied
   into the build directory and the build will be run with the copied
-  sources.
+  sources. If it contains string `ALL` then all builds will be done
+  assuming that this parameter is set.
 
 * `provides` (dict with list of string values) additional symbols
   provided by RPM SPEC. In general, it is not required as provided

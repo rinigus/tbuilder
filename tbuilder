@@ -305,7 +305,10 @@ cachefname = "cache.yaml"
 
 # add subdir to required keys
 provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
-insource = [ os.path.join(specdir, k) for k in insource ]
+if 'ALL' in insource:
+    insource = ['ALL']
+else:
+    insource = [ os.path.join(specdir, k) for k in insource ]
 
 # check for required parameters
 if len(project_name) < 1:
@@ -348,6 +351,7 @@ for tool in targets:
     bdir = builddir(tool)
     os.makedirs(rdir, exist_ok = True)
     os.makedirs(bdir, exist_ok = True)
+    os.makedirs(targetdir(tool), exist_ok = True)
 
     # load cache if it is available
     current_cache = os.path.join(bdir, cachefname)
@@ -454,7 +458,7 @@ for tool in targets:
                               tool = tool,
                               project_name = project_name, rpmroot = rpms,
                               buildoptions = buildoptions, macros = macros,
-                              insource = (s.specfname in insource))
+                              insource = (s.specfname in insource or 'ALL' in insource))
 
         make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
 
