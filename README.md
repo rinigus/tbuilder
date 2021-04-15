@@ -74,5 +74,6 @@ Requirements are
   default in Application SDK. For that, login as root and run `zypper
   in make`.
 
-- `rpmspec`, `rpm`, `createrepo` in the PATH. Many distributions allow
-  you to install it even when some other packaging format is used.
+- `rpmspec`, `rpm`, `createrepo` (`createrepo_c`) in the PATH. Many
+  distributions allow you to install it even when some other packaging
+  format is used.
