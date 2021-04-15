@@ -15,12 +15,15 @@ class Commands:
     def __init__(self):
         # check createrepo is with _c suffix
         if shutil.which("createrepo_c") is not None:
-            self.createrepo = "createrepo_c"
+            self._createrepo = "createrepo_c"
         elif shutil.which("createrepo") is not None:
-            self.createrepo = 'createrepo'
+            self._createrepo = 'createrepo'
         else:
             print("Cannot find createrepo")
             sys.exit(-1)
+
+    def createrepo(self, rpmpath):
+        return commands._createrepo + ' ' + rpmpath
 
 # global commands instance
 commands = Commands()
@@ -212,7 +215,7 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
         make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
         srcpath = "."
     if use_sfdk:
-        make += '\t' + 'sfdk config fix-version\n'
+        make += '\t' + 'sfdk config no-fix-version\n'
         make += '\t' + 'sfdk config target=' + tool + '\n'
         make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
         make += '\t' + 'sfdk config specfile=' + specpath + '\n'
@@ -220,12 +223,12 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
         make += '\t' + '(cd %s && sfdk build -d %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
     else:
         make += '\t' + \
-            '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} -x build -d {bopts} {src} {rpmbuild})\n'.format(
+            '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
                 bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                 snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
     # finalize
-    make += '\t' + commands.createrepo + ' ' + rpmpath + '\n'
+    make += '\t' + commands.createrepo(rpmpath) + '\n'
     make += '\ttouch ' + target_spec(spec, tool) + '\n'
     make += '\n'
     return make
