@@ -372,9 +372,9 @@ for tool in targets:
             srcname = qbinsrcname(rpmfname)
             prov = qbinprovides(rpmfname)
             add_rpm_targets(rpmfname, prov)
+            local_provided.update(prov)
             if srcname in specs:
                 specs[srcname].provides.update(prov)
-                local_provided.update(prov)
 
         if len(local_provided) > 0:
             print('Available local provided symbols:', " ".join(local_provided), "\n")
