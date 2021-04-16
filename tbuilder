@@ -42,9 +42,10 @@ class Commands:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
             make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
-            make += '\t' + 'sfdk config specfile=' + specpath + '\n'
             make += '\t' + 'sfdk config snapshot=%s \n' % project_name
-            make += '\t' + '(cd %s && sfdk build -d %s %s %s)\n' % (bdir, buildoptions, srcpath, rpmbuild)
+            make += '\t' + '(cd %s && ' % bdir
+            make += 'sfdk config specfile=' + specpath + ' && '
+            make += 'sfdk build -d %s %s %s)\n' % (buildoptions, srcpath, rpmbuild)
         else:
             make += '\t' + \
                 '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
@@ -71,30 +72,29 @@ class Commands:
         return cmd
 
 
-
 # global commands instance
 commands = Commands()
 
 # helper functions
-def run_with_check(cmd, check_error=True):
+def run_with_check(cmd, check_error=True, cwd = None):
     if isinstance(cmd, str):
         cmd = cmd.split()
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
     if proc.returncode and check_error:
         print('Error while executing', cmd)
         print('Return code:', proc.returncode)
-        print('STDOUT:\n', proc.stdout.decode('utf-8'))
-        print('STDERR:\n', proc.stderr.decode('utf-8'))
+        print('STDOUT:\n' + proc.stdout.decode('utf-8'))
+        print('STDERR:\n' + proc.stderr.decode('utf-8'))
         sys.exit(-2)
 
     return proc.stdout.decode('utf-8'), proc.stderr.decode('utf-8')
 
-def query(exe, specname, q, macros = [], check_error=True):
+def query(exe, specname, q, macros = [], check_error=True, cwd = None):
     cmd = [exe, '-q', q]
     for m in macros:
         cmd.append('--define=%s' % m)
     cmd.append(specname)
-    stdout, stderr = run_with_check(cmd, check_error)
+    stdout, stderr = run_with_check(cmd, check_error, cwd = cwd)
 
     # stdout = proc.stdout.decode('utf-8')
     result = []
@@ -107,18 +107,18 @@ def query(exe, specname, q, macros = [], check_error=True):
             result_full[l.strip()] = rr
     return result, result_full
 
-def qname(specname, macros = []):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0][0]
+def qname(specname, macros = [], cwd = None):
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros, cwd = cwd)[0][0]
 
-def qbuildrequires(specname, macros = []):
-    q, qf = query('rpmspec', specname, '--buildrequires', macros)
+def qbuildrequires(specname, macros = [], cwd = None):
+    q, qf = query('rpmspec', specname, '--buildrequires', macros, cwd = cwd)
     return set(q), qf
 
-def qprovides(specname, macros = []):
-    return set(query('rpmspec', specname, '--provides', macros)[0])
+def qprovides(specname, macros = [], cwd = None):
+    return set(query('rpmspec', specname, '--provides', macros, cwd = cwd)[0])
 
-def qname(specname, macros = []):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros)[0][0]
+def qname(specname, macros = [], cwd = None):
+    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros, cwd = cwd)[0][0]
 
 def qbinprovides(rpmname, macros = []):
     return set(query('rpm', rpmname, '--provides', macros, check_error=False)[0])
@@ -194,7 +194,7 @@ def add_rpm_targets(rpmfname, prov):
             f.close()
             del f
         else:
-            # modify timestamp only if target provides is older than RPM.
+            # modify timestamp only if target_provides is older than RPM.
             # this is to avoid touching timestamps as much as possible.
             # otherwise, have seen some rebuilds triggered by incorrect
             # timestamps
@@ -210,68 +210,81 @@ def make_dir(dname):
         '\ttouch ' + target_dir(dname) + '\n' + \
         '\n'
 
-def make_provides(p, spec, tool):
-    t = target_provides(p, tool)
-    s = target_spec(spec, tool)
-    return "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
-
-def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, insource):
-    make = target_spec(spec, tool) + ': %s %s %s %s ' % (target_targetdir(tool),
-                                                         target_builddir(tool),
-                                                         target_rpmdir(rpmroot, tool),
-                                                         spec)
-    make += ' '.join([target_provides(i, tool) for i in req])
-    make += '\n'
-    # determine src and spec abs path
-    ## handle case where we can have relative symbolic links
-    ## as well as rpm within the source dir which is symlink.
-    ## for these cases, resolve symlink late
-    sbase = os.path.basename(spec)
-    bdir = os.path.join(builddir(tool), sbase)
-    slink = os.readlink(spec)
-    srcpath = os.path.dirname(os.path.dirname(slink))
-    if not os.path.isabs(srcpath):
-        srcpath = os.path.abspath( os.path.join(os.path.dirname(spec), srcpath) )
-    specpath = os.path.abspath(spec)
-    rpmpath = os.path.abspath(rpmdir(rpmroot, tool))
-    # build options for rpmbuild
-    if len(macros) > 0:
-        rpmbuild = " " + " ".join(['--define="%s"' % m for m in macros])
-    else:
-        rpmbuild = ""
-    # write build section
-    make += '\t' + '@echo\n'
-    make += '\t' + '@echo Building %s for %s\n' % (spec, tool)
-    make += '\t' + '@echo\n'
-    if not insource:
-        make += '\t' + 'rm -rf %s\n' % bdir
-    make += '\t' + 'mkdir -p %s\n' % bdir
-    if insource:
-        make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
-        srcpath = "."
-        buildoptions = buildoptions + " -p"
-
-    make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
-                                 project_name = project_name, buildoptions = buildoptions,
-                                 srcpath = srcpath, rpmbuild = rpmbuild)
-
-    # finalize
-    make += '\t' + commands.createrepo(rpmpath) + '\n'
-    make += '\ttouch ' + target_spec(spec, tool) + '\n'
-    make += '\n'
-    return make
-
 
 class Spec:
     def __init__(self, s, macros):
-        self.specfname  = s
-        self.name = qname(s, macros)
-        self.requires, self.requires_full = qbuildrequires(s, macros)
+        self.specfname = s
+        # determine src and spec abs path
+        ## handle case where we can have relative symbolic links
+        ## as well as rpm within the source dir which is symlink.
+        ## for these cases, resolve symlink late
+        slink = os.readlink(s)
+        rpmdir, specfname_rel = os.path.split(slink)
+        self.srcpath, rpmpath_rel = os.path.split(rpmdir)
+        self.specfname_rel = os.path.join(rpmpath_rel, specfname_rel)
+        # handle relative path
+        if not os.path.isabs(self.srcpath):
+            self.srcpath = os.path.abspath( os.path.join(os.path.dirname(s), self.srcpath) )
+        # fill data using queries
+        self.name = qname(self.specfname_rel, macros, cwd = self.srcpath)
+        self.requires, self.requires_full = qbuildrequires(self.specfname_rel, macros, cwd = self.srcpath)
         self.provides = set()
         self.missing = set()
 
     def __str__(self):
         return "{name}: {specfname}  / requires: {requires} / provides: {provides} / missing: {missing}".format(**self.__dict__)
+
+    def make_provides(self, tool):
+        make = ''
+        s = target_spec(self.specfname, tool)
+        for p in self.provides:
+            t = target_provides(p, tool)
+            make += "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
+        return make
+
+    def make_spec(self, system_provided, tool, project_name, rpmroot, buildoptions, macros, insource):
+        req = self.requires - system_provided
+        make = target_spec(self.specfname, tool) + \
+            ': %s %s %s %s ' % (target_targetdir(tool), target_builddir(tool),
+                                target_rpmdir(rpmroot, tool),
+                                self.specfname)
+        make += ' '.join([target_provides(i, tool) for i in req])
+        make += '\n'
+        # determine src and spec path
+        sbase = os.path.basename(self.specfname)
+        bdir = os.path.join(builddir(tool), sbase)
+        specpath = os.path.abspath(self.specfname)
+        rpmpath = os.path.abspath(rpmdir(rpmroot, tool))
+        # build options for rpmbuild
+        if len(macros) > 0:
+            rpmbuild = " " + " ".join(['--define="%s"' % m for m in macros])
+        else:
+            rpmbuild = ""
+        # write build section
+        make += '\t' + '@echo\n'
+        make += '\t' + '@echo Building %s for %s\n' % (self.specfname, tool)
+        make += '\t' + '@echo\n'
+        if not insource:
+            make += '\t' + 'rm -rf %s\n' % bdir
+        make += '\t' + 'mkdir -p %s\n' % bdir
+        if insource:
+            make += '\t' + 'rsync -a --delete %s/ %s/\n' % (self.srcpath, bdir)
+            srcpath = "."
+            specpath = self.specfname_rel
+            buildoptions = buildoptions + " -p"
+        else:
+            srcpath = self.srcpath
+
+        make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
+                                     project_name = project_name, buildoptions = buildoptions,
+                                     srcpath = srcpath, rpmbuild = rpmbuild)
+
+        # finalize
+        make += '\t' + commands.createrepo(rpmpath) + '\n'
+        make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
+        make += '\n'
+        return make
+
 
 ##########################################################
 ## main
@@ -451,15 +464,13 @@ for tool in targets:
                 continue
 
             # provides targets
-            for p in s.provides:
-                make += make_provides(p, s.specfname, tool)
+            make += s.make_provides(tool)
 
-            make += make_spec(spec = s.specfname,
-                              req = s.requires - system_provided,
-                              tool = tool,
-                              project_name = project_name, rpmroot = rpms,
-                              buildoptions = buildoptions, macros = macros,
-                              insource = (s.specfname in insource or 'ALL' in insource))
+            make += s.make_spec(system_provided = system_provided,
+                                tool = tool,
+                                project_name = project_name, rpmroot = rpms,
+                                buildoptions = buildoptions, macros = macros,
+                                insource = (s.specfname in insource or 'ALL' in insource))
 
         make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
 
