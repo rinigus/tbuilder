@@ -249,6 +249,7 @@ def make_spec(spec, req, tool, project_name, rpmroot, buildoptions, macros, inso
     if insource:
         make += '\t' + 'rsync -a --delete %s/ %s/\n' % (srcpath, bdir)
         srcpath = "."
+        buildoptions = buildoptions + " -p"
 
     make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
                                  project_name = project_name, buildoptions = buildoptions,
