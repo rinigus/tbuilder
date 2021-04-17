@@ -266,8 +266,10 @@ class RPM:
         if proc.returncode:
             # cannot install: process output
             for i in root.iter('description'):
-                # limit error message to 100 chars
-                self.missing.append(i.text.split('\n')[0][:100])
+                # limit error message to 100 chars and use only the last one with a problem
+                d = i.text.split('\n')[0][:100]
+                if len(self.missing) == 0 or d.startswith('Problem'):
+                    self.missing = [d]
             print('No')
             return False
         # should have received positive reply
