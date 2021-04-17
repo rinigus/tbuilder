@@ -2,9 +2,50 @@
 
 # helper script to add repositories under `src` of your project
 
-bname=`basename $1`
+set -e
 
-git submodule add $1 src/$bname
-(cd src/$bname && git submodule update --init --recursive)
+if [ $# -eq 0 ]
+then
+    echo "Missing repository to add"
+    exit 0
+fi
+
+branch=""
+while getopts ":b:" opt; do
+    case $opt in
+	b)
+	    branch=$OPTARG
+	    ;;
+	\?)
+	    echo "Invalid option: -$OPTARG" >&2
+	    exit 1
+	    ;;
+	:)
+	    echo "Option -$OPTARG requires an argument." >&2
+	    exit 1
+	    ;;
+    esac
+done
+
+echo ${@:$OPTIND:1}
+
+if [ $(( $# - $OPTIND )) -lt 0 ]; then
+    echo "Usage: $0 [-b branch] repository"
+    exit 1
+fi
+
+repo=${@:$OPTIND:1}
+bname=`basename $repo`
+
+git submodule add $repo src/$bname
+
+if [ -z "$branch" ]
+then
+    echo "Using default branch"
+    (cd src/$bname && git submodule update --init --recursive)
+else
+    echo "Using branch" $branch
+    (cd src/$bname && git checkout $branch && git submodule update --init --recursive)
+fi
+
 (cd spec/ && ln -s ../src/$bname/rpm/*.spec .)
-
