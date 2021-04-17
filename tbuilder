@@ -175,25 +175,6 @@ def target_provides(p, tool):
     p = p.replace('/', '_')
     return tf(target_generic(p, tool))
 
-# add targets that are provided already
-def add_rpm_targets(rpmfname, prov):
-    stat = os.stat(rpmfname)
-    for p in prov:
-        tname = target_provides(p, tool)
-        if not os.path.exists(tname):
-            f = open(tname, "w")
-            f.write(rpmfname)
-            f.close()
-            del f
-        else:
-            # modify timestamp only if target_provides is older than RPM.
-            # this is to avoid touching timestamps as much as possible.
-            # otherwise, have seen some rebuilds triggered by incorrect
-            # timestamps
-            sp = os.stat(tname)
-            if sp.st_mtime_ns < stat.st_mtime_ns:
-                os.utime(tname, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-
 # make snippets
 def make_dir(dname):
     return \
@@ -260,6 +241,10 @@ class LocalProvided:
 
 class RPM:
     # handle RPM
+    cache_fname = "cache_rpm.yaml"
+    current_cache = []
+    current_cache_fname = None
+
     def __init__(self, tool, rpmfname):
         self.tool = tool
         self.rpmfname = rpmfname
@@ -267,13 +252,12 @@ class RPM:
         self.requires, self.requires_full = query('rpm', rpmfname, '--requires', check_error=False)
         self.requires = set(self.requires)
         self.missing = []
-        self._can_use = False
 
     def can_use(self):
         # expect that if RPM was installable once, it will hold later in the build
-        if self._can_use:
+        if RPM.is_cached(self.rpmfname):
             return True
-        print('Checking whether %s can be used:' % self.rpmfname, end=" ", flush=True)
+        print('Checking whether %s can be used:' % os.path.basename(self.rpmfname), end=" ", flush=True)
         self.missing = []
         cmd = commands.caninstall(self.tool, self.rpmfname)
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -282,13 +266,14 @@ class RPM:
         if proc.returncode:
             # cannot install: process output
             for i in root.iter('description'):
-                self.missing.append(i.text.split('\n')[0])
+                # limit error message to 100 chars
+                self.missing.append(i.text.split('\n')[0][:100])
             print('No')
             return False
         # should have received positive reply
         for i in root.iter('solvable'):
             print('Yes')
-            self._can_use = True
+            RPM.add_to_cache(self.rpmfname)
             return True
         # not expected
         print('Unexpected reply from zypper')
@@ -300,6 +285,7 @@ class RPM:
         break_on_purpose_please_notify_developers
         return False
 
+        ## older implementation that was not able to catch all the cases
         # self.missing = set()
         # for r, rsimple in self.requires_full.items():
         #     if not rsimple in self.provides and \
@@ -307,6 +293,29 @@ class RPM:
         #        not system_provided.provided(r, rsimple):
         #         self.missing.add(r)
         # return len(self.missing) == 0
+
+    @staticmethod
+    def update_cache(tool):
+        RPM.current_cache = []
+        bdir = builddir(tool)
+        RPM.current_cache_fname = os.path.join(bdir, RPM.cache_fname)
+        if os.path.exists(RPM.current_cache_fname):
+            with open(RPM.current_cache_fname, 'r') as f:
+                c = yaml.safe_load(f)
+                if isinstance(c, list):
+                    RPM.current_cache = c
+
+    @staticmethod
+    def add_to_cache(fname):
+        RPM.current_cache.append(fname)
+        if RPM.current_cache_fname is None:
+            return
+        with open(RPM.current_cache_fname, 'w') as f:
+            yaml.safe_dump(RPM.current_cache, f)
+
+    @staticmethod
+    def is_cached(fname):
+        return (fname in RPM.current_cache)
 
 
 class Spec:
@@ -534,6 +543,7 @@ for tool in targets:
 
     system_provided = SystemProvided(tool)
     targets_state = TargetDirTracker(tool)
+    RPM.update_cache(tool)
 
     # prepare directories
     rdir = rpmdir(rpmrootdir, tool)
@@ -573,7 +583,7 @@ for tool in targets:
                 local_provided.add_provided(r.provides, r.rpmfname)
         print()
 
-        # older implementation
+        ## older implementation that was not able to catch all the cases
         # while True:
         #     # check which RPMs can be used
         #     changed = False
@@ -595,7 +605,7 @@ for tool in targets:
         for rk in rkeys:
             r = rpms[rk]
             if len(r.missing) > 0:
-                print(r.rpmfname, 'not used:',
+                print(os.path.basename(r.rpmfname), 'not used:',
                       " ".join(r.missing))
                 hadmissing = True
         if hadmissing: print()
