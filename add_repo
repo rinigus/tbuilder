@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# helper script to add repositories under `src` of your project
+
+bname=`basename $1`
+
+git submodule add $1 src/$bname
+(cd src/$bname && git submodule update --init --recursive)
+(cd spec/ && ln -s ../src/$bname/rpm/*.spec .)
+
