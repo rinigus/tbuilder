@@ -286,6 +286,24 @@ class Spec:
         return make
 
 
+class TargetDirTracker:
+    def __init__(self, tool):
+        self.targets = dict()
+        self.tool = tool
+        self.update()
+
+    def update(self):
+        # return True if some targets got updated
+        tgts = dict()
+        for f in glob.glob(os.path.join(targetdir(self.tool), "*")):
+            stat = os.stat(f)
+            tgts[f] = stat.st_mtime_ns
+        if tgts == self.targets:
+            return False
+        self.targets = tgts
+        return True
+
+
 ##########################################################
 ## main
 
@@ -358,7 +376,7 @@ for tool in targets:
 
     system_provided = set()
     system_missing = set()
-    last_make = set()
+    targets_state = TargetDirTracker(tool)
 
     # prepare directories
     rdir = rpmdir(rpms, tool)
@@ -438,11 +456,6 @@ for tool in targets:
                 tomake.add(k)
         print()
 
-        if tomake == last_make:
-            print('Last and current list of packages that can be built is the same')
-            print('Nothing new, stopping for target', tool)
-            break
-
         print('Packages included into the current build:', " ".join(tomake))
 
         # generate Makefile
@@ -497,13 +510,16 @@ for tool in targets:
             else:
                 print('Build successful\n')
 
-        # update conditions
-        last_make = tomake
-        if len(skipped) == 0:
-            Done = True
-
         # current summary for this toolkit
         summary[tool] = "Build packages: " + " ".join(tomake) + "\nSkipped packages: " + " ".join(skipped)
+
+        # update conditions
+        changed = targets_state.update()
+        if not changed:
+            print('Nothing new, stopping for target', tool, '\n')
+            Done = True
+        else:
+            print('Targets changed or updated, continue building\n')
 
 
 print('\nAll builds finished\n')
