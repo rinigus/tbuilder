@@ -212,6 +212,7 @@ def make_dir(dname):
 
 
 class Spec:
+    # handle single SPEC
     def __init__(self, s, macros):
         self.specfname = s
         # determine src and spec abs path
@@ -286,7 +287,59 @@ class Spec:
         return make
 
 
+class SystemProvided:
+    # follows system provided symbols
+    def __init__(self, tool):
+        self.system_provided = set()
+        self.system_missing = set()
+        self.tool = tool
+        self._cachefname = "cache.yaml"
+        self._was_updated = False
+        # load cache if it is available
+        bdir = builddir(tool)
+        self._current_cache = os.path.join(bdir, self._cachefname)
+        if os.path.exists(self._current_cache):
+            with open(self._current_cache, 'r') as f:
+                c = yaml.safe_load(f)
+                if isinstance(c, dict):
+                    self.system_provided = set(c.get('system_provided', []))
+                    self.system_missing = set(c.get('system_missing', []))
+
+    def provided(self, r, rsimple):
+        if r in self.system_provided:
+            return True
+        if r in self.system_missing:
+            return False
+
+        self._was_updated = True
+        print('Check for availibility in the system:', r, flush=True, end=' : ')
+        in_system = qsystemhas(r, self.tool)
+
+        if in_system:
+            print('Available')
+            self.system_provided.add(r)
+            self.system_provided.add(rsimple)
+            return True
+        else:
+            print('Requires building')
+            self.system_missing.add(r)
+            return False
+
+    def was_checking(self):
+        if not self._was_updated:
+            return False
+        self._was_updated = False
+        return True
+
+    def write_cache(self):
+        with open(self._current_cache, 'w') as f:
+            c = dict(system_provided = list(self.system_provided),
+                     system_missing = list(self.system_missing))
+            yaml.safe_dump(c, f)
+
+
 class TargetDirTracker:
+    # state of the targets in targets dir
     def __init__(self, tool):
         self.targets = dict()
         self.tool = tool
@@ -333,7 +386,6 @@ buildoptions = config.get('buildoptions', '')
 provides_extra = config.get('provides', dict())
 insource = config.get('insource', [])
 specdir = "spec"
-cachefname = "cache.yaml"
 
 # add subdir to required keys
 provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
@@ -374,8 +426,7 @@ for tool in targets:
         print(s.specfname, ':', s.name)
     print()
 
-    system_provided = set()
-    system_missing = set()
+    system_provided = SystemProvided(tool)
     targets_state = TargetDirTracker(tool)
 
     # prepare directories
@@ -385,14 +436,6 @@ for tool in targets:
     os.makedirs(bdir, exist_ok = True)
     os.makedirs(targetdir(tool), exist_ok = True)
 
-    # load cache if it is available
-    current_cache = os.path.join(bdir, cachefname)
-    if os.path.exists(current_cache):
-        with open(current_cache, 'r') as f:
-            c = yaml.safe_load(f)
-            if isinstance(c, dict):
-                system_provided = set(c.get('system_provided', []))
-                system_missing = set(c.get('system_missing', []))
 
     # start build loop
     Done = False
@@ -412,36 +455,17 @@ for tool in targets:
             print('Available local provided symbols:', " ".join(local_provided), "\n")
 
         # determine whether packages are missing something preventing the build
-        checked_in_system = False
         for _, s in specs.items():
             s.missing = set()
             for r, rsimple in s.requires_full.items():
-                if r in system_provided or rsimple in local_provided:
+                if rsimple in local_provided or system_provided.provided(r, rsimple):
                     continue
-                elif r in system_missing:
-                    s.missing.add(r)
                 else:
-                    checked_in_system = True
-                    print('Check for availibility in the system:', r, flush=True, end=' : ')
-                    in_system = qsystemhas(r, tool)
+                    s.missing.add(r)
 
-                    if in_system:
-                        print('Available')
-                        system_provided.add(r)
-                        system_provided.add(rsimple)
-                        continue
-                    else:
-                        print('Requires building')
-                        system_missing.add(r)
-                        s.missing.add(r)
-
-        if checked_in_system: print()
-
-        # update cache
-        with open(current_cache, 'w') as f:
-            c = dict(system_provided = list(system_provided),
-                     system_missing = list(system_missing))
-            yaml.safe_dump(c, f)
+        if system_provided.was_checking():
+            print()
+            system_provided.write_cache()
 
         # summarize findings
         tomake = set()
@@ -479,7 +503,7 @@ for tool in targets:
             # provides targets
             make += s.make_provides(tool)
 
-            make += s.make_spec(system_provided = system_provided,
+            make += s.make_spec(system_provided = system_provided.system_provided,
                                 tool = tool,
                                 project_name = project_name, rpmroot = rpms,
                                 buildoptions = buildoptions, macros = macros,
