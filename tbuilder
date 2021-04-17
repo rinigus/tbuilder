@@ -252,7 +252,7 @@ class RPM:
     def __init__(self, rpmfname):
         self.rpmfname = rpmfname
         self.provides = set(query('rpm', rpmfname, '--provides', check_error=False)[0])
-        self.requires, self.requires_full = query('rpm', rpmfname, '--requires')
+        self.requires, self.requires_full = query('rpm', rpmfname, '--requires', check_error=False)
         self.requires = set(self.requires)
         self.missing = set()
 
