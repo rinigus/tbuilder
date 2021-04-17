@@ -72,6 +72,17 @@ class Commands:
             cmd = cmd.split()
         return cmd
 
+    def caninstall(self, tool, rpmfname):
+        fname = os.path.abspath(rpmfname)
+        dname = os.path.dirname(fname)
+        if self.use_sfdk:
+            cmd = ["sfdk", "tools", "exec", tool]
+        else:
+            cmd = ["sb2", "-t", tool, "-R"]
+        cmd.extend(["zypper", "-x", "-p", dname])
+        cmd.extend( ("in -f --dry-run --download-only -y --allow-unsigned-rpm").split() )
+        cmd.append(fname)
+        return cmd
 
 # global commands instance
 commands = Commands()
@@ -249,21 +260,53 @@ class LocalProvided:
 
 class RPM:
     # handle RPM
-    def __init__(self, rpmfname):
+    def __init__(self, tool, rpmfname):
+        self.tool = tool
         self.rpmfname = rpmfname
         self.provides = set(query('rpm', rpmfname, '--provides', check_error=False)[0])
         self.requires, self.requires_full = query('rpm', rpmfname, '--requires', check_error=False)
         self.requires = set(self.requires)
-        self.missing = set()
+        self.missing = []
+        self._can_use = False
 
-    def can_use(self, system_provided, local_provided):
-        self.missing = set()
-        for r, rsimple in self.requires_full.items():
-            if not rsimple in self.provides and \
-               not local_provided.provided(r, rsimple) and \
-               not system_provided.provided(r, rsimple):
-                self.missing.add(r)
-        return len(self.missing) == 0
+    def can_use(self):
+        # expect that if RPM was installable once, it will hold later in the build
+        if self._can_use:
+            return True
+        print('Checking whether %s can be used:' % self.rpmfname, end=" ", flush=True)
+        self.missing = []
+        cmd = commands.caninstall(self.tool, self.rpmfname)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        s = proc.stdout.decode('utf-8')
+        root = ET.fromstring(s)
+        if proc.returncode:
+            # cannot install: process output
+            for i in root.iter('description'):
+                self.missing.append(i.text.split('\n')[0])
+            print('No')
+            return False
+        # should have received positive reply
+        for i in root.iter('solvable'):
+            print('Yes')
+            self._can_use = True
+            return True
+        # not expected
+        print('Unexpected reply from zypper')
+        print('Used command: ', " ".join(cmd))
+        print('Response:')
+        print(proc.stdout.decode('utf-8'))
+        print('ERR:')
+        print(proc.stderr.decode('utf-8'))
+        break_on_purpose_please_notify_developers
+        return False
+
+        # self.missing = set()
+        # for r, rsimple in self.requires_full.items():
+        #     if not rsimple in self.provides and \
+        #        not local_provided.provided(r, rsimple) and \
+        #        not system_provided.provided(r, rsimple):
+        #         self.missing.add(r)
+        # return len(self.missing) == 0
 
 
 class Spec:
@@ -339,7 +382,9 @@ class Spec:
                                      srcpath = srcpath, rpmbuild = rpmbuild)
 
         # finalize
-        make += '\t' + commands.createrepo(rpmpath) + '\n'
+        # createrepo will create unsigned repo and zypper will refuse
+        # to use it while checking for packages. for now, disable it
+        #make += '\t' + commands.createrepo(rpmpath) + '\n'
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
         make += '\n'
         return make
@@ -497,6 +542,7 @@ for tool in targets:
     os.makedirs(bdir, exist_ok = True)
     os.makedirs(targetdir(tool), exist_ok = True)
 
+    rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))}
 
     # start build loop
     Done = False
@@ -504,26 +550,52 @@ for tool in targets:
 
         # query provided symbols in current ready RPMs
         local_provided = LocalProvided(tool)
-        rpms = [RPM(rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))]
-        while True:
-            # check which RPMs can be used
-            changed = False
-            for r in rpms:
-                if r.can_use(system_provided, local_provided):
-                    if local_provided.add_provided(r.provides, r.rpmfname):
-                        changed = True
-            if not changed:
-                break
 
-        if system_provided.was_checking():
-            print()
-            system_provided.write_cache()
+        # update with new RPMs
+        rpmfiles = []
+        for rpmfname in glob.glob(os.path.join(rdir, "*.rpm")):
+            rpmfiles.append(rpmfname)
+            if rpmfname not in rpms:
+                rpms[rpmfname] = RPM(tool, rpmfname)
+
+        # drop missing RPMs
+        to_del = []
+        for rk in rpms:
+            if rk not in rpmfiles:
+                to_del.append(rk)
+        for rk in to_del:
+            del rpms[rk]
+
+        # as dependencies are checked by zypper, no need to iterate as we
+        # populate local_provided
+        for _, r in rpms.items():
+            if r.can_use():
+                local_provided.add_provided(r.provides, r.rpmfname)
+        print()
+
+        # older implementation
+        # while True:
+        #     # check which RPMs can be used
+        #     changed = False
+        #     for r in rpms:
+        #         if r.can_use(system_provided, local_provided):
+        #             if local_provided.add_provided(r.provides, r.rpmfname):
+        #                 changed = True
+        #     if not changed:
+        #         break
+
+        # if system_provided.was_checking():
+        #     print()
+        #     system_provided.write_cache()
 
         # write out which RPMs cannot be used
         hadmissing = False
-        for r in rpms:
+        rkeys = list(rpms.keys())
+        rkeys.sort()
+        for rk in rkeys:
+            r = rpms[rk]
             if len(r.missing) > 0:
-                print(r.rpmfname, 'has missing dependencies:',
+                print(r.rpmfname, 'not used:',
                       " ".join(r.missing))
                 hadmissing = True
         if hadmissing: print()
