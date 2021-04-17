@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 import glob
 import os
 import pathlib
@@ -107,26 +108,6 @@ def query(exe, specname, q, macros = [], check_error=True, cwd = None):
             result_full[l.strip()] = rr
     return result, result_full
 
-def qname(specname, macros = [], cwd = None):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros, cwd = cwd)[0][0]
-
-def qbuildrequires(specname, macros = [], cwd = None):
-    q, qf = query('rpmspec', specname, '--buildrequires', macros, cwd = cwd)
-    return set(q), qf
-
-def qprovides(specname, macros = [], cwd = None):
-    return set(query('rpmspec', specname, '--provides', macros, cwd = cwd)[0])
-
-def qname(specname, macros = [], cwd = None):
-    return query('rpmspec', specname, '--queryformat=%{NAME} ', macros, cwd = cwd)[0][0]
-
-def qbinprovides(rpmname, macros = []):
-    return set(query('rpm', rpmname, '--provides', macros, check_error=False)[0])
-
-def qbinsrcname(rpmname, macros = []):
-    s = query('rpm', rpmname, '--queryformat=%{SOURCERPM} ', macros, check_error=False)[0][0]
-    return s.rsplit('-', 2)[0]
-
 def qsystemhas(r, tool):
     cmd = commands.systemhas(tool)
     cmd.append(r)
@@ -210,9 +191,83 @@ def make_dir(dname):
         '\ttouch ' + target_dir(dname) + '\n' + \
         '\n'
 
+class LocalProvided:
+    # symbols provided by local RPMs
+    def __init__(self, tool):
+        self.tool = tool
+        self._provided = set()
+
+    def provided(self, r, rsimple):
+        return (rsimple in self._provided)
+
+    def add_provided(self, rsimple, refname):
+        pold = copy.copy(self._provided)
+        if isinstance(rsimple, set):
+            self._provided.update(rsimple)
+            for p in rsimple:
+                self._write_target_if_absent(p, refname)
+        else:
+            self._provided.add(rsimple)
+            self._write_target_if_absent(rsimple, refname)
+        return (pold != self._provided)
+
+    def cleanup(self):
+        # remove all target files that are not known about
+        known_fnames = [target_provides(p, self.tool) for p in self._provided]
+        to_delete = []
+        for f in glob.glob(os.path.join(targetdir(tool), "*")):
+            if f.endswith(".spec"):
+                # target made by spec compilation
+                pass
+            elif f not in known_fnames:
+                to_delete.append(f)
+        for f in to_delete:
+            print('Removing unknown target file:', f)
+            os.remove(f)
+
+    def print_provided(self):
+        if len(self._provided) > 0:
+            p = list(self._provided)
+            p.sort()
+            print('Available local provided symbols:', " ".join(p), "\n")
+
+    def _write_target_if_absent(self, p, refname):
+        tname = target_provides(p, self.tool)
+        stat = os.stat(refname)
+        if not os.path.exists(tname):
+            f = open(tname, "w")
+            f.write(refname)
+        else:
+            # modify timestamp only if target_provides is older than RPM.
+            # this is to avoid touching timestamps as much as possible.
+            # otherwise, have seen some rebuilds triggered by incorrect
+            # timestamps
+            sp = os.stat(tname)
+            if sp.st_mtime_ns < stat.st_mtime_ns:
+                os.utime(tname, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+
+class RPM:
+    # handle RPM
+    def __init__(self, rpmfname):
+        self.rpmfname = rpmfname
+        self.provides = set(query('rpm', rpmfname, '--provides', check_error=False)[0])
+        self.requires, self.requires_full = query('rpm', rpmfname, '--requires')
+        self.requires = set(self.requires)
+        self.missing = set()
+
+    def can_use(self, system_provided, local_provided):
+        self.missing = set()
+        for r, rsimple in self.requires_full.items():
+            if not rsimple in self.provides and \
+               not local_provided.provided(r, rsimple) and \
+               not system_provided.provided(r, rsimple):
+                self.missing.add(r)
+        return len(self.missing) == 0
+
 
 class Spec:
-    # handle single SPEC
+    # handle SPEC
     def __init__(self, s, macros):
         self.specfname = s
         # determine src and spec abs path
@@ -227,21 +282,24 @@ class Spec:
         if not os.path.isabs(self.srcpath):
             self.srcpath = os.path.abspath( os.path.join(os.path.dirname(s), self.srcpath) )
         # fill data using queries
-        self.name = qname(self.specfname_rel, macros, cwd = self.srcpath)
-        self.requires, self.requires_full = qbuildrequires(self.specfname_rel, macros, cwd = self.srcpath)
-        self.provides = set()
+        self.name = query('rpmspec', self.specfname_rel,
+                          '--queryformat=%{NAME} ', macros,
+                          cwd = self.srcpath)[0][0]
+        self.requires, self.requires_full = query('rpmspec', self.specfname_rel,
+                                                  '--buildrequires', macros, cwd = self.srcpath)
+        self.requires = set(self.requires)
         self.missing = set()
 
     def __str__(self):
-        return "{name}: {specfname}  / requires: {requires} / provides: {provides} / missing: {missing}".format(**self.__dict__)
+        return "{name}: {specfname}  / requires: {requires} / missing: {missing}".format(**self.__dict__)
 
-    def make_provides(self, tool):
-        make = ''
-        s = target_spec(self.specfname, tool)
-        for p in self.provides:
-            t = target_provides(p, tool)
-            make += "%s: %s %s\n\ttouch '%s'\n\n" % (t, target_targetdir(tool), s, t)
-        return make
+    def can_build(self, system_provided, local_provided):
+        self.missing = set()
+        for r, rsimple in self.requires_full.items():
+            if not local_provided.provided(r, rsimple) and \
+               not system_provided.provided(r, rsimple):
+                self.missing.add(r)
+        return len(self.missing) == 0
 
     def make_spec(self, system_provided, tool, project_name, rpmroot, buildoptions, macros, insource):
         req = self.requires - system_provided
@@ -310,6 +368,9 @@ class SystemProvided:
             return True
         if r in self.system_missing:
             return False
+
+        # hack, as for some reason those get undetected
+        if r.startswith('rpmlib('): return True
 
         self._was_updated = True
         print('Check for availibility in the system:', r, flush=True, end=' : ')
@@ -380,7 +441,7 @@ with open("config.yaml", "r") as f:
 
 project_name = config.get('project', '')
 targets = config.get('targets', [])
-rpms = config.get('rpms', '')
+rpmrootdir = config.get('rpms', '')
 macros = config.get('macros', [])
 buildoptions = config.get('buildoptions', '')
 provides_extra = config.get('provides', dict())
@@ -401,7 +462,7 @@ if len(project_name) < 1:
 if len(targets) < 1:
     print('No targets specified in the project config.yaml')
     sys.exit(-1)
-if len(rpms) < 1:
+if len(rpmrootdir) < 1:
     print('No RPMS directory specified in the project config.yaml')
     sys.exit(-1)
 
@@ -430,7 +491,7 @@ for tool in targets:
     targets_state = TargetDirTracker(tool)
 
     # prepare directories
-    rdir = rpmdir(rpms, tool)
+    rdir = rpmdir(rpmrootdir, tool)
     bdir = builddir(tool)
     os.makedirs(rdir, exist_ok = True)
     os.makedirs(bdir, exist_ok = True)
@@ -442,44 +503,59 @@ for tool in targets:
     while not Done:
 
         # query provided symbols in current ready RPMs
-        local_provided = set()
-        for rpmfname in glob.glob(os.path.join(rdir, "*.rpm")):
-            srcname = qbinsrcname(rpmfname)
-            prov = qbinprovides(rpmfname)
-            add_rpm_targets(rpmfname, prov)
-            local_provided.update(prov)
-            if srcname in specs:
-                specs[srcname].provides.update(prov)
-
-        if len(local_provided) > 0:
-            print('Available local provided symbols:', " ".join(local_provided), "\n")
-
-        # determine whether packages are missing something preventing the build
-        for _, s in specs.items():
-            s.missing = set()
-            for r, rsimple in s.requires_full.items():
-                if rsimple in local_provided or system_provided.provided(r, rsimple):
-                    continue
-                else:
-                    s.missing.add(r)
+        local_provided = LocalProvided(tool)
+        rpms = [RPM(rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))]
+        while True:
+            # check which RPMs can be used
+            changed = False
+            for r in rpms:
+                if r.can_use(system_provided, local_provided):
+                    if local_provided.add_provided(r.provides, r.rpmfname):
+                        changed = True
+            if not changed:
+                break
 
         if system_provided.was_checking():
             print()
             system_provided.write_cache()
 
-        # summarize findings
+        # write out which RPMs cannot be used
+        hadmissing = False
+        for r in rpms:
+            if len(r.missing) > 0:
+                print(r.rpmfname, 'has missing dependencies:',
+                      " ".join(r.missing))
+                hadmissing = True
+        if hadmissing: print()
+
+        # remove unknown target files that we cannot use
+        local_provided.cleanup()
+
+        # print out locally provided symbols used in the build
+        local_provided.print_provided()
+
+        # determine whether packages are missing something preventing the build
         tomake = set()
         skipped = set()
+        missing_txt = ''
         for k, s in specs.items():
-            if len(s.missing) > 0:
-                print('{name}({spec}) has missing dependencies:'.format(name = s.name,
-                                                                        spec = s.specfname),
-                      " ".join(s.missing))
-                skipped.add(k)
-            else:
+            if s.can_build(system_provided, local_provided):
                 tomake.add(k)
-        print()
+            else:
+                missing_txt += '{name}({spec}) has missing dependencies: '.format(name = s.name,
+                                                                                  spec = s.specfname)
+                missing_txt += " ".join(s.missing) + "\n"
+                skipped.add(k)
 
+        if system_provided.was_checking():
+            print()
+            system_provided.write_cache()
+
+        if len(missing_txt) > 0:
+            print(missing_txt)
+
+        # summarize findings
+        print()
         print('Packages included into the current build:', " ".join(tomake))
 
         # generate Makefile
@@ -493,19 +569,16 @@ for tool in targets:
         # create directories
         make += make_dir(builddir(tool))
         make += make_dir(targetdir(tool))
-        make += make_dir(rpmdir(rpms, tool))
+        make += make_dir(rpmdir(rpmrootdir, tool))
 
         for k, s in specs.items():
             # skip packages that we cannot build yet
             if k not in tomake:
                 continue
 
-            # provides targets
-            make += s.make_provides(tool)
-
             make += s.make_spec(system_provided = system_provided.system_provided,
                                 tool = tool,
-                                project_name = project_name, rpmroot = rpms,
+                                project_name = project_name, rpmroot = rpmrootdir,
                                 buildoptions = buildoptions, macros = macros,
                                 insource = (s.specfname in insource or 'ALL' in insource))
 
