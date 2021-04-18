@@ -503,6 +503,7 @@ buildoptions = config.get('buildoptions', '')
 provides_extra = config.get('provides', dict())
 insource = config.get('insource', [])
 specdir = "spec"
+repodir = "repodata"
 
 # add subdir to required keys
 provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
@@ -529,9 +530,13 @@ for tool in targets:
     print('Starting builds for', tool, '\n')
 
     # initialize for each target
-
     refreshsystem(tool)
 
+    # remove createrepo-generated 
+    repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
+    if os.path.exists(repodir_full):
+        shutil.rmtree(repodir_full)
+    
     # load RPMs and their properties
     specs = {}
     for f in glob.glob(os.path.join(specdir,"*.spec")):
@@ -701,6 +706,9 @@ for tool in targets:
             Done = True
         else:
             print('Targets changed or updated, continue building\n')
+
+    # generate repo data after the build
+    run_with_check(commands.createrepo(rpmdir(rpmrootdir, tool)))
 
 
 print('\nAll builds finished\n')
