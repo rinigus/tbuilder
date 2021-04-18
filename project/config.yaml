@@ -11,11 +11,5 @@ buildoptions: -j4
 macros:
   - sailfishos 4.0
 
-provides:
-  flatpak.spec:
-     - pkgconfig(flatpak)
-  ostree.spec:
-     - pkgconfig(ostree-1)
-
-insource:
-  - libappstream-glib.spec
+shadow_builds:
+  - flatpak.spec

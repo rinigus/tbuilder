@@ -538,16 +538,13 @@ rpmrootdir = config.get('rpms', '')
 macros = config.get('macros', [])
 buildoptions = config.get('buildoptions', '')
 provides_extra = config.get('provides', dict())
-insource = config.get('insource', [])
+shadow_builds = config.get('shadow_builds', [])
 specdir = "spec"
 repodir = "repodata"
 
 # add subdir to required keys
 provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
-if 'ALL' in insource:
-    insource = ['ALL']
-else:
-    insource = [ os.path.join(specdir, k) for k in insource ]
+shadow_builds = [ os.path.join(specdir, k) for k in shadow_builds ]
 
 # check for required parameters
 if len(project_name) < 1:
@@ -699,7 +696,7 @@ for tool in targets:
                                 tool = tool,
                                 rpmroot = rpmrootdir,
                                 buildoptions = buildoptions, macros = macros,
-                                insource = (s.specfname in insource or 'ALL' in insource))
+                                insource = (s.specfname not in shadow_builds))
 
         make += 'all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n' % main_deps
 

@@ -1,7 +1,7 @@
 # TBuilder
 
 This is a builder for projects defined by multiple RPM SPECs. It is
-targeting Sailfish OS and is using `sfdk` or `mb2/sb2` provided by
+targeting Sailfish OS and is using `mb2/sb2` or `sfdk` provided by
 Sailfish OS Application or Platform SDKs.
 
 ## Use
@@ -49,16 +49,8 @@ The following fields are optional:
 * `macros` (list of strings) macros considered while parsing RPM SPEC
   and during the build.
 
-* `insource` (list of strings) SPEC packages that have to be built
-  inside source directory. In this case, the sources will be copied
-  into the build directory and the build will be run with the copied
-  sources. If it contains string `ALL` then all builds will be done
-  assuming that this parameter is set.
-
-* `provides` (dict with list of string values) additional symbols
-  provided by RPM SPEC. In general, it is not required as provided
-  symbols are detected automatically.
-
+* `shadow_builds` (list of strings) SPEC packages that will be built
+  using shadow builds approach (see SDK documentation).
 
 ## Requirements
 
