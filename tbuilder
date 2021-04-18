@@ -281,8 +281,6 @@ class RPM:
         self.rpmfname = rpmfname
         self.short_rpmfname = os.path.basename(self.rpmfname)
         self.provides = set(query(tool, 'rpm', rpmfname, '--provides', check_error=False)[0])
-        #self.requires, self.requires_full = query(tool, 'rpm', rpmfname, '--requires', check_error=False)
-        #self.requires = set(self.requires)
         self.missing = []
         self.log_check_fname = os.path.join(logdir(self.tool),
                                             RPM.log_prefix + self.short_rpmfname + ".xml")
@@ -324,15 +322,6 @@ class RPM:
         print(proc.stderr.decode('utf-8'))
         break_on_purpose_please_notify_developers
         return False
-
-        ## older implementation that was not able to catch all the cases
-        # self.missing = set()
-        # for r, rsimple in self.requires_full.items():
-        #     if not rsimple in self.provides and \
-        #        not local_provided.provided(r, rsimple) and \
-        #        not system_provided.provided(r, rsimple):
-        #         self.missing.add(r)
-        # return len(self.missing) == 0
 
     @staticmethod
     def update_cache(tool):
@@ -645,21 +634,6 @@ for tool in targets:
             if r.can_use():
                 local_provided.add_provided(r.provides, r.rpmfname)
         print()
-
-        ## older implementation that was not able to catch all the cases
-        # while True:
-        #     # check which RPMs can be used
-        #     changed = False
-        #     for r in rpms:
-        #         if r.can_use(system_provided, local_provided):
-        #             if local_provided.add_provided(r.provides, r.rpmfname):
-        #                 changed = True
-        #     if not changed:
-        #         break
-
-        # if system_provided.was_checking():
-        #     print()
-        #     system_provided.write_cache()
 
         # write out which RPMs cannot be used
         hadmissing = False
