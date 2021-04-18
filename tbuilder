@@ -714,7 +714,7 @@ for tool in targets:
     # list packages in the order they were built
     ready = [ (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec")) ]
     ready.sort()
-    print('Packages build in the following order:\n')
+    print('Packages were built in the following order:\n')
     for p in ready:
         print(datetime.datetime.fromtimestamp(p[0]).strftime('%x %X'), p[1])
 
