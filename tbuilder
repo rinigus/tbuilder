@@ -149,6 +149,9 @@ def builddir(tool):
 def targetdir(tool):
     return os.path.join(builddir(tool), 'target')
 
+def logdir(tool):
+    return os.path.join(builddir(tool), 'logs')
+
 # processing of targets
 def tf(s):
     # replace chars that may cause issues for make or filesystem
@@ -245,27 +248,35 @@ class RPM:
     cache_fname = "cache_rpm.yaml"
     current_cache = []
     current_cache_fname = None
+    log_prefix = "zypper-log-"
 
     def __init__(self, tool, rpmfname):
         self.tool = tool
         self.rpmfname = rpmfname
+        self.short_rpmfname = os.path.basename(self.rpmfname)
         self.provides = set(query('rpm', rpmfname, '--provides', check_error=False)[0])
         self.requires, self.requires_full = query('rpm', rpmfname, '--requires', check_error=False)
         self.requires = set(self.requires)
         self.missing = []
+        self.log_check_fname = os.path.join(logdir(self.tool),
+                                            RPM.log_prefix + self.short_rpmfname + ".xml")
 
     def can_use(self):
         # expect that if RPM was installable once, it will hold later in the build
         if RPM.is_cached(self.rpmfname):
             return True
-        print('Checking whether %s can be used:' % os.path.basename(self.rpmfname), end=" ", flush=True)
+        print('Checking whether %s can be used:' % self.short_rpmfname, end=" ", flush=True)
         self.missing = []
         cmd = commands.caninstall(self.tool, self.rpmfname)
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         s = proc.stdout.decode('utf-8')
         root = ET.fromstring(s)
         if proc.returncode:
-            # cannot install: process output
+            # cannot install
+            ## log the output of zypper for details
+            with open( self.log_check_fname, "w" ) as f:
+                f.write(s)
+            ## process output
             for i in root.iter('description'):
                 # limit error message to 100 chars and use only the last one with a problem
                 d = i.text.split('\n')[0][:100]
@@ -559,6 +570,7 @@ for tool in targets:
     os.makedirs(rdir, exist_ok = True)
     os.makedirs(bdir, exist_ok = True)
     os.makedirs(targetdir(tool), exist_ok = True)
+    os.makedirs(logdir(tool), exist_ok = True)
 
     rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))}
 
@@ -583,6 +595,10 @@ for tool in targets:
                 to_del.append(rk)
         for rk in to_del:
             del rpms[rk]
+
+        # remove old logs
+        for f in glob.glob(os.path.join(logdir(tool), RPM.log_prefix + "*")):
+            os.remove(f)
 
         # as dependencies are checked by zypper, no need to iterate as we
         # populate local_provided
