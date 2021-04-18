@@ -165,6 +165,13 @@ def query(tool, exe, specname, q, macros = [], check_error=True, cwd = None):
             result_full[l.strip()] = rr
     return result, result_full
 
+def install_extras(tool, install, repo):
+    if len(install) == 0:
+        return
+    print('Install extra packages requested in the project configuration')
+    for p in install:
+        commands.install_package(tool, p, force=True, extra_repo=repo)
+
 # definition of dirs
 def rpmdir(root, tool):
     return os.path.join(root, tool)
@@ -537,13 +544,12 @@ targets = config.get('targets', [])
 rpmrootdir = config.get('rpms', '')
 macros = config.get('macros', [])
 buildoptions = config.get('buildoptions', '')
-provides_extra = config.get('provides', dict())
 shadow_builds = config.get('shadow_builds', [])
+install_extra_packages = config.get('install', [])
 specdir = "spec"
 repodir = "repodata"
 
 # add subdir to required keys
-provides_extra = { os.path.join(specdir, k): v for k,v in provides_extra.items() }
 shadow_builds = [ os.path.join(specdir, k) for k in shadow_builds ]
 
 # check for required parameters
@@ -569,12 +575,23 @@ for tool in targets:
     commands.make_snapshot(tool)
     commands.refresh_system(tool)
 
-    # remove createrepo-generated
+    # remove createrepo-generated repodata
     repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
     if os.path.exists(repodir_full):
         shutil.rmtree(repodir_full)
 
-    # load RPMs and their properties
+    # prepare directories
+    rdir = rpmdir(rpmrootdir, tool)
+    bdir = builddir(tool)
+    os.makedirs(rdir, exist_ok = True)
+    os.makedirs(bdir, exist_ok = True)
+    os.makedirs(targetdir(tool), exist_ok = True)
+    os.makedirs(logdir(tool), exist_ok = True)
+
+    # install requested packages, could be used already during loading of SPECs
+    install_extras(tool, install_extra_packages, rdir)
+
+    # load SPECs and their properties
     specs = {}
     for f in glob.glob(os.path.join(specdir,"*.spec")):
         s = Spec(f, macros)
@@ -585,23 +602,22 @@ for tool in targets:
         print(s.specfname, ':', s.name)
     print()
 
+    # track states
     system_provided = SystemProvided(tool)
     targets_state = TargetDirTracker(tool)
     RPM.update_cache(tool)
 
-    # prepare directories
-    rdir = rpmdir(rpmrootdir, tool)
-    bdir = builddir(tool)
-    os.makedirs(rdir, exist_ok = True)
-    os.makedirs(bdir, exist_ok = True)
-    os.makedirs(targetdir(tool), exist_ok = True)
-    os.makedirs(logdir(tool), exist_ok = True)
-
+    # load RPMs
     rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))}
 
     # start build loop
     Done = False
+    first_iteration = True
     while not Done:
+
+        if not first_iteration:
+            # install requested packages, could have been updated during prev iteration
+            install_extras(tool, install, rdir)
 
         # query provided symbols in current ready RPMs
         local_provided = LocalProvided(tool)
@@ -727,12 +743,14 @@ for tool in targets:
         summary[tool] = "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped)
 
         # update conditions
+        first_iteration = False
         changed = targets_state.update()
         if not changed:
             print('Nothing new, stopping for target', tool, '\n')
             Done = True
         else:
             print('Targets changed or updated, continue building\n')
+
 
     # generate repo data after the build
     print("Install createrepo if it is missing")

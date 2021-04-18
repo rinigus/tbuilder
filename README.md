@@ -46,6 +46,13 @@ The following fields are optional:
 * `buildoptions` (string) additional options to pass to `sfdk
   build`. For example, `-j4`.
 
+* `install` (list of strings) list of packages that are installed into
+  the target during a build. Errors during installation are ignored
+  and installation is attempted on every iteration of the build. This
+  list allows you to specify packages that are needed for processing
+  SPECs or are otherwise in the conflict with the installed target
+  packages.
+
 * `macros` (list of strings) macros considered while parsing RPM SPEC
   and during the build.
 
