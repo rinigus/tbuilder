@@ -356,8 +356,8 @@ class Spec:
                 self.missing.add(r)
         return len(self.missing) == 0
 
-    def make_spec(self, system_provided, tool, project_name, rpmroot, buildoptions, macros, insource):
-        req = self.requires - system_provided
+    def make_spec(self, local_provided, tool, project_name, rpmroot, buildoptions, macros, insource):
+        req = [rsimple for r, rsimple in self.requires_full.items() if local_provided.provided(r, rsimple)]
         make = target_spec(self.specfname, tool) + \
             ': %s %s %s %s ' % (target_targetdir(tool), target_builddir(tool),
                                 target_rpmdir(rpmroot, tool),
@@ -666,7 +666,7 @@ for tool in targets:
             if k not in tomake:
                 continue
 
-            make += s.make_spec(system_provided = system_provided.system_provided,
+            make += s.make_spec(local_provided = local_provided,
                                 tool = tool,
                                 project_name = project_name, rpmroot = rpmrootdir,
                                 buildoptions = buildoptions, macros = macros,
