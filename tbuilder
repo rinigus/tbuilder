@@ -76,8 +76,8 @@ class Commands:
             cmd += "-p " + os.path.abspath(extra_repo) + " "
         cmd += "in "
         if force:
-            cmd += "-f "
-        cmd += "-y " + package
+            cmd += "--force-resolution "
+        cmd += "-y --allow-unsigned-rpm " + package
         proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(cmd)
         print(proc.stdout.decode('utf-8'))
@@ -617,7 +617,7 @@ for tool in targets:
 
         if not first_iteration:
             # install requested packages, could have been updated during prev iteration
-            install_extras(tool, install, rdir)
+            install_extras(tool, install_extra_packages, rdir)
 
         # query provided symbols in current ready RPMs
         local_provided = LocalProvided(tool)
