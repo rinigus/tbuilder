@@ -13,18 +13,24 @@ import sys
 import yaml # pip PyYAML
 import xml.etree.ElementTree as ET
 
+# helper for running commands
+def run_with_check(cmd, check_error=True, cwd = None):
+    if isinstance(cmd, str):
+        cmd = cmd.split()
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+    if proc.returncode and check_error:
+        print('Error while executing', " ".join(cmd))
+        print('Return code:', proc.returncode)
+        print('STDOUT:\n' + proc.stdout.decode('utf-8'))
+        print('STDERR:\n' + proc.stderr.decode('utf-8'))
+        sys.exit(-2)
+
+    return proc.stdout.decode('utf-8'), proc.stderr.decode('utf-8')
+
 # commands abstraction
 class Commands:
     def __init__(self):
-        # check createrepo is with _c suffix
-        if shutil.which("createrepo_c") is not None:
-            self._createrepo = "createrepo_c"
-        elif shutil.which("createrepo") is not None:
-            self._createrepo = 'createrepo'
-        else:
-            print("Cannot find createrepo")
-            sys.exit(-1)
-
+        self.project = ""
         # check whether to use sfdk or not
         if shutil.which("mb2") is not None and shutil.which("sb2") is not None:
             self.use_sfdk = False
@@ -34,17 +40,54 @@ class Commands:
             print('Cannot find sfdk nor sb2/mb2')
             sys.exit(-1)
 
-    def createrepo(self, rpmpath):
-        return commands._createrepo + ' ' + rpmpath
+    def set_project(self, project):
+        self.project = project
 
-    def makesection(self, tool, bdir, rpmpath, specpath, project_name,
+    def target_snapshot(self, tool):
+        return "%s.%s" % (tool, self.project)
+
+    def make_snapshot(self, tool):
+        if self.use_sfdk:
+            cmd = "sfdk engine exec "
+        else:
+            cmd = ""
+        cmd += "sdk-manage target snapshot %s %s" % (tool, self.target_snapshot(tool))
+        proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(cmd)
+        print(proc.stdout.decode('utf-8'))
+        print(proc.stderr.decode('utf-8'))
+        return proc.returncode == 0
+
+    def createrepo(self, tool, rpmpath):
+        if self.use_sfdk:
+            cmd = "sfdk tools exec %s createrepo_c " % self.target_snapshot(tool)
+        else:
+            cmd = "sb2 -t %s createrepo_c " % self.target_snapshot(tool)
+        cmd += rpmpath
+        run_with_check(cmd)
+
+    def install_package(self, tool, package, extra_repo=None):
+        if self.use_sfdk:
+            cmd = "sfdk tools exec %s " % self.target_snapshot(tool)
+        else:
+            cmd = "sb2 -t %s -R " % self.target_snapshot(tool)
+        cmd += "zypper "
+        if extra_repo is not None:
+            cmd += "-p " + os.path.abspath(extra_repo) + " "
+        cmd += "in -f -y " + package
+        proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(cmd)
+        print(proc.stdout.decode('utf-8'))
+        return proc.returncode == 0
+
+    def makesection(self, tool, bdir, rpmpath, specpath,
                     buildoptions, srcpath, rpmbuild):
         make = ''
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
             make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
-            make += '\t' + 'sfdk config snapshot=%s \n' % project_name
+            make += '\t' + 'sfdk config snapshot=%s \n' % self.project
             make += '\t' + '(cd %s && ' % bdir
             make += 'sfdk config specfile=' + specpath + ' && '
             make += 'sfdk build -d %s %s %s)\n' % (buildoptions, srcpath, rpmbuild)
@@ -52,24 +95,24 @@ class Commands:
             make += '\t' + \
                 '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
-                    snap = project_name, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
+                    snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
         return make
 
 
     def refreshsystem(self, tool):
         if self.use_sfdk:
-            return "sfdk tools exec %s zypper refresh" % tool
-        return "sb2 -t %s -R zypper refresh" % tool
+            return "sfdk tools exec %s zypper refresh" % self.target_snapshot(tool)
+        return "sb2 -t %s -R zypper refresh" % self.target_snapshot(tool)
 
     def systemhas(self, tool):
         if self.use_sfdk:
             # prepare sfdk to run
             run_with_check("sfdk config target=" + tool)
-            run_with_check("sfdk config no-snapshot")
+            run_with_check("sfdk config snapshot=%s" % self.project)
             cmd = "sfdk build-shell zypper -x search --provides --match-exact".split()
         else:
-            cmd = "sb2 -t %s zypper -x search --provides --match-exact" % tool
+            cmd = "sb2 -t %s zypper -x search --provides --match-exact" % self.target_snapshot(tool)
             cmd = cmd.split()
         return cmd
 
@@ -77,33 +120,28 @@ class Commands:
         fname = os.path.abspath(rpmfname)
         dname = os.path.dirname(fname)
         if self.use_sfdk:
-            cmd = ["sfdk", "tools", "exec", tool]
+            cmd = ["sfdk", "tools", "exec", self.target_snapshot(tool)]
         else:
-            cmd = ["sb2", "-t", tool, "-R"]
+            cmd = ["sb2", "-t", self.target_snapshot(tool), "-R"]
         cmd.extend(["zypper", "-x", "-p", dname])
         cmd.extend( ("in -f --dry-run --download-only -y --allow-unsigned-rpm").split() )
         cmd.append(fname)
         return cmd
 
+    def runcmd(self, tool, cmd):
+        if self.use_sfdk:
+            # prepare sfdk to run
+            run_with_check("sfdk config target=" + tool)
+            run_with_check("sfdk config snapshot=%s" % self.project)
+            return "sfdk build-shell %s" % cmd
+        return "sb2 -t %s %s"  % (self.target_snapshot(tool), cmd)
+
 # global commands instance
 commands = Commands()
 
-# helper functions
-def run_with_check(cmd, check_error=True, cwd = None):
-    if isinstance(cmd, str):
-        cmd = cmd.split()
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
-    if proc.returncode and check_error:
-        print('Error while executing', cmd)
-        print('Return code:', proc.returncode)
-        print('STDOUT:\n' + proc.stdout.decode('utf-8'))
-        print('STDERR:\n' + proc.stderr.decode('utf-8'))
-        sys.exit(-2)
-
-    return proc.stdout.decode('utf-8'), proc.stderr.decode('utf-8')
-
-def query(exe, specname, q, macros = [], check_error=True, cwd = None):
-    cmd = [exe, '-q', q]
+def query(tool, exe, specname, q, macros = [], check_error=True, cwd = None):
+    cmd = commands.runcmd(tool, exe).split()
+    cmd.extend(['-q', q])
     for m in macros:
         cmd.append('--define=%s' % m)
     cmd.append(specname)
@@ -254,8 +292,8 @@ class RPM:
         self.tool = tool
         self.rpmfname = rpmfname
         self.short_rpmfname = os.path.basename(self.rpmfname)
-        self.provides = set(query('rpm', rpmfname, '--provides', check_error=False)[0])
-        self.requires, self.requires_full = query('rpm', rpmfname, '--requires', check_error=False)
+        self.provides = set(query(tool, 'rpm', rpmfname, '--provides', check_error=False)[0])
+        self.requires, self.requires_full = query(tool, 'rpm', rpmfname, '--requires', check_error=False)
         self.requires = set(self.requires)
         self.missing = []
         self.log_check_fname = os.path.join(logdir(self.tool),
@@ -348,10 +386,10 @@ class Spec:
         if not os.path.isabs(self.srcpath):
             self.srcpath = os.path.abspath( os.path.join(os.path.dirname(s), self.srcpath) )
         # fill data using queries
-        self.name = query('rpmspec', self.specfname_rel,
+        self.name = query(tool, 'rpmspec', self.specfname_rel,
                           '--queryformat=%{NAME} ', macros,
                           cwd = self.srcpath)[0][0]
-        self.requires, self.requires_full = query('rpmspec', self.specfname_rel,
+        self.requires, self.requires_full = query(tool, 'rpmspec', self.specfname_rel,
                                                   '--buildrequires', macros, cwd = self.srcpath)
         self.requires = set(self.requires)
         self.missing = set()
@@ -367,7 +405,7 @@ class Spec:
                 self.missing.add(r)
         return len(self.missing) == 0
 
-    def make_spec(self, local_provided, tool, project_name, rpmroot, buildoptions, macros, insource):
+    def make_spec(self, local_provided, tool, rpmroot, buildoptions, macros, insource):
         req = [rsimple for r, rsimple in self.requires_full.items() if local_provided.provided(r, rsimple)]
         make = target_spec(self.specfname, tool) + \
             ': %s %s %s %s ' % (target_targetdir(tool), target_builddir(tool),
@@ -401,13 +439,10 @@ class Spec:
             srcpath = self.srcpath
 
         make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
-                                     project_name = project_name, buildoptions = buildoptions,
+                                     buildoptions = buildoptions,
                                      srcpath = srcpath, rpmbuild = rpmbuild)
 
         # finalize
-        # createrepo will create unsigned repo and zypper will refuse
-        # to use it while checking for packages. for now, disable it
-        #make += '\t' + commands.createrepo(rpmpath) + '\n'
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
         make += '\n'
         return make
@@ -535,6 +570,7 @@ if len(rpmrootdir) < 1:
     print('No RPMS directory specified in the project config.yaml')
     sys.exit(-1)
 
+commands.set_project(project_name)
 
 # main loop
 summary = {}
@@ -542,13 +578,15 @@ for tool in targets:
     print('Starting builds for', tool, '\n')
 
     # initialize for each target
+    print("Create snapshot if it is missing")
+    commands.make_snapshot(tool)
     refreshsystem(tool)
 
-    # remove createrepo-generated 
+    # remove createrepo-generated
     repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
     if os.path.exists(repodir_full):
         shutil.rmtree(repodir_full)
-    
+
     # load RPMs and their properties
     specs = {}
     for f in glob.glob(os.path.join(specdir,"*.spec")):
@@ -684,7 +722,7 @@ for tool in targets:
 
             make += s.make_spec(local_provided = local_provided,
                                 tool = tool,
-                                project_name = project_name, rpmroot = rpmrootdir,
+                                rpmroot = rpmrootdir,
                                 buildoptions = buildoptions, macros = macros,
                                 insource = (s.specfname in insource or 'ALL' in insource))
 
@@ -725,7 +763,9 @@ for tool in targets:
             print('Targets changed or updated, continue building\n')
 
     # generate repo data after the build
-    run_with_check(commands.createrepo(rpmdir(rpmrootdir, tool)))
+    print("Install createrepo if it is missing")
+    commands.install_package(tool, "createrepo_c")
+    commands.createrepo(tool, rpmdir(rpmrootdir, tool))
 
     # list packages in the order they were built
     ready = [ (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec")) ]
