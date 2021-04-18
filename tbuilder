@@ -63,10 +63,10 @@ class Commands:
             cmd = "sfdk tools exec %s createrepo_c " % self.target_snapshot(tool)
         else:
             cmd = "sb2 -t %s createrepo_c " % self.target_snapshot(tool)
-        cmd += rpmpath
+        cmd += os.path.abspath(rpmpath)
         run_with_check(cmd)
 
-    def install_package(self, tool, package, extra_repo=None):
+    def install_package(self, tool, package, force=False, extra_repo=None):
         if self.use_sfdk:
             cmd = "sfdk tools exec %s " % self.target_snapshot(tool)
         else:
@@ -74,14 +74,17 @@ class Commands:
         cmd += "zypper "
         if extra_repo is not None:
             cmd += "-p " + os.path.abspath(extra_repo) + " "
-        cmd += "in -f -y " + package
+        cmd += "in "
+        if force:
+            cmd += "-f "
+        cmd += "-y " + package
         proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(cmd)
         print(proc.stdout.decode('utf-8'))
         return proc.returncode == 0
 
-    def makesection(self, tool, bdir, rpmpath, specpath,
-                    buildoptions, srcpath, rpmbuild):
+    def make_section(self, tool, bdir, rpmpath, specpath,
+                     buildoptions, srcpath, rpmbuild):
         make = ''
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
@@ -99,13 +102,16 @@ class Commands:
 
         return make
 
-
-    def refreshsystem(self, tool):
+    def refresh_system(self, tool):
         if self.use_sfdk:
-            return "sfdk tools exec %s zypper refresh" % self.target_snapshot(tool)
-        return "sb2 -t %s -R zypper refresh" % self.target_snapshot(tool)
+            cmd = "sfdk tools exec %s zypper refresh" % self.target_snapshot(tool)
+        else:
+            cmd = "sb2 -t %s -R zypper refresh" % self.target_snapshot(tool)
+        print('Refreshing zypper cache for', self.target_snapshot(tool))
+        s, e = run_with_check(cmd)
+        print(s)
 
-    def systemhas(self, tool):
+    def system_has(self, tool):
         if self.use_sfdk:
             # prepare sfdk to run
             run_with_check("sfdk config target=" + tool)
@@ -116,7 +122,7 @@ class Commands:
             cmd = cmd.split()
         return cmd
 
-    def caninstall(self, tool, rpmfname):
+    def can_install(self, tool, rpmfname):
         fname = os.path.abspath(rpmfname)
         dname = os.path.dirname(fname)
         if self.use_sfdk:
@@ -128,7 +134,7 @@ class Commands:
         cmd.append(fname)
         return cmd
 
-    def runcmd(self, tool, cmd):
+    def run_cmd(self, tool, cmd):
         if self.use_sfdk:
             # prepare sfdk to run
             run_with_check("sfdk config target=" + tool)
@@ -139,8 +145,9 @@ class Commands:
 # global commands instance
 commands = Commands()
 
+# shared by spec and rpm classes
 def query(tool, exe, specname, q, macros = [], check_error=True, cwd = None):
-    cmd = commands.runcmd(tool, exe).split()
+    cmd = commands.run_cmd(tool, exe).split()
     cmd.extend(['-q', q])
     for m in macros:
         cmd.append('--define=%s' % m)
@@ -157,25 +164,6 @@ def query(tool, exe, specname, q, macros = [], check_error=True, cwd = None):
             result.append(rr)
             result_full[l.strip()] = rr
     return result, result_full
-
-def qsystemhas(r, tool):
-    cmd = commands.systemhas(tool)
-    cmd.append(r)
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    # zypper returns non-zero if failing to find
-    if proc.returncode:
-        return False # assume that it just failed to find
-    s = proc.stdout.decode('utf-8')
-    root = ET.fromstring(s)
-    for i in root.iter('solvable'):
-        return True
-    return False
-
-def refreshsystem(tool):
-    print('Refreshing zypper cache for', tool)
-    cmd = commands.refreshsystem(tool)
-    s, e = run_with_check(cmd)
-    print(s)
 
 # definition of dirs
 def rpmdir(root, tool):
@@ -293,8 +281,8 @@ class RPM:
         self.rpmfname = rpmfname
         self.short_rpmfname = os.path.basename(self.rpmfname)
         self.provides = set(query(tool, 'rpm', rpmfname, '--provides', check_error=False)[0])
-        self.requires, self.requires_full = query(tool, 'rpm', rpmfname, '--requires', check_error=False)
-        self.requires = set(self.requires)
+        #self.requires, self.requires_full = query(tool, 'rpm', rpmfname, '--requires', check_error=False)
+        #self.requires = set(self.requires)
         self.missing = []
         self.log_check_fname = os.path.join(logdir(self.tool),
                                             RPM.log_prefix + self.short_rpmfname + ".xml")
@@ -305,7 +293,7 @@ class RPM:
             return True
         print('Checking whether %s can be used:' % self.short_rpmfname, end=" ", flush=True)
         self.missing = []
-        cmd = commands.caninstall(self.tool, self.rpmfname)
+        cmd = commands.can_install(self.tool, self.rpmfname)
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         s = proc.stdout.decode('utf-8')
         root = ET.fromstring(s)
@@ -438,9 +426,9 @@ class Spec:
         else:
             srcpath = self.srcpath
 
-        make += commands.makesection(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
-                                     buildoptions = buildoptions,
-                                     srcpath = srcpath, rpmbuild = rpmbuild)
+        make += commands.make_section(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
+                                      buildoptions = buildoptions,
+                                      srcpath = srcpath, rpmbuild = rpmbuild)
 
         # finalize
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
@@ -477,7 +465,7 @@ class SystemProvided:
 
         self._was_updated = True
         print('Check for availibility in the system:', r, flush=True, end=' : ')
-        in_system = qsystemhas(r, self.tool)
+        in_system = self._system_has(r)
 
         if in_system:
             print('Available')
@@ -488,6 +476,19 @@ class SystemProvided:
             print('Requires building')
             self.system_missing.add(r)
             return False
+
+    def _system_has(self, r):
+        cmd = commands.system_has(self.tool)
+        cmd.append(r)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # zypper returns non-zero if failing to find
+        if proc.returncode:
+            return False # assume that it just failed to find
+        s = proc.stdout.decode('utf-8')
+        root = ET.fromstring(s)
+        for i in root.iter('solvable'):
+            return True
+        return False
 
     def was_checking(self):
         if not self._was_updated:
@@ -580,7 +581,7 @@ for tool in targets:
     # initialize for each target
     print("Create snapshot if it is missing")
     commands.make_snapshot(tool)
-    refreshsystem(tool)
+    commands.refresh_system(tool)
 
     # remove createrepo-generated
     repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
