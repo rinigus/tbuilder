@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import datetime
 import glob
 import os
 import pathlib
@@ -697,7 +698,7 @@ for tool in targets:
                 print('Build successful\n')
 
         # current summary for this toolkit
-        summary[tool] = "Build packages: " + " ".join(tomake) + "\nSkipped packages: " + " ".join(skipped)
+        summary[tool] = "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped)
 
         # update conditions
         changed = targets_state.update()
@@ -710,6 +711,12 @@ for tool in targets:
     # generate repo data after the build
     run_with_check(commands.createrepo(rpmdir(rpmrootdir, tool)))
 
+    # list packages in the order they were built
+    ready = [ (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec")) ]
+    ready.sort()
+    print('Packages build in the following order:\n')
+    for p in ready:
+        print(datetime.datetime.fromtimestamp(p[0]).strftime('%x %X'), p[1])
 
 print('\nAll builds finished\n')
 
