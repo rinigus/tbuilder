@@ -77,8 +77,8 @@ class Commands:
         cmd += "in "
         if force:
             cmd += "--force-resolution "
-        cmd += "-y --allow-unsigned-rpm " + package
-        proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cmd += "-y --allow-vendor-change --allow-unsigned-rpm " + package
+        proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         print(cmd)
         print(proc.stdout.decode('utf-8'))
         return proc.returncode == 0
@@ -130,7 +130,7 @@ class Commands:
         else:
             cmd = ["sb2", "-t", self.target_snapshot(tool), "-R"]
         cmd.extend(["zypper", "-x", "-p", dname])
-        cmd.extend( ("in -f --dry-run --download-only -y --allow-unsigned-rpm").split() )
+        cmd.extend( ("in --dry-run --download-only -y --allow-unsigned-rpm").split() )
         cmd.append(fname)
         return cmd
 
@@ -320,6 +320,12 @@ class RPM:
             print('Yes')
             RPM.add_to_cache(self.rpmfname)
             return True
+        # check if it is installed already
+        for i in root.iter('message'):
+            if i.text.find(' is already installed.') > 0:
+                print('Yes, installed already')
+                RPM.add_to_cache(self.rpmfname)
+                return True
         # not expected
         print('Unexpected reply from zypper')
         print('Used command: ', " ".join(cmd))
