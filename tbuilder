@@ -13,6 +13,19 @@ import sys
 import yaml # pip PyYAML
 import xml.etree.ElementTree as ET
 
+# definition of dirs
+def rpmdir(root, tool):
+    return os.path.join(root, tool)
+
+def builddir(tool):
+    return os.path.join('build', tool)
+
+def targetdir(tool):
+    return os.path.join(builddir(tool), 'target')
+
+def logdir(tool):
+    return os.path.join(builddir(tool), 'logs')
+
 # helper for running commands
 def run_with_check(cmd, check_error=True, cwd = None):
     if isinstance(cmd, str):
@@ -67,6 +80,7 @@ class Commands:
         run_with_check(cmd)
 
     def install_package(self, tool, package, force=False, extra_repo=None):
+        print('Installing', package, flush=True, end=": ")
         if self.use_sfdk:
             cmd = "sfdk tools exec %s " % self.target_snapshot(tool)
         else:
@@ -79,9 +93,13 @@ class Commands:
             cmd += "--force-resolution "
         cmd += "-y --allow-vendor-change --allow-unsigned-rpm " + package
         proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        print(cmd)
-        print(proc.stdout.decode('utf-8'))
-        return proc.returncode == 0
+        with open( os.path.join(logdir(tool),
+                                "zypper-install-" + package + ".log"), "w" ) as f:
+            f.write(cmd + "\n" + proc.stdout.decode('utf-8'))
+        if proc.returncode == 0:
+            print("Installed")
+        else:
+            print("Failed this time")
 
     def make_section(self, tool, bdir, rpmpath, specpath,
                      buildoptions, srcpath, rpmbuild):
@@ -171,19 +189,7 @@ def install_extras(tool, install, repo):
     print('Install extra packages requested in the project configuration')
     for p in install:
         commands.install_package(tool, p, force=True, extra_repo=repo)
-
-# definition of dirs
-def rpmdir(root, tool):
-    return os.path.join(root, tool)
-
-def builddir(tool):
-    return os.path.join('build', tool)
-
-def targetdir(tool):
-    return os.path.join(builddir(tool), 'target')
-
-def logdir(tool):
-    return os.path.join(builddir(tool), 'logs')
+    print()
 
 # processing of targets
 def tf(s):
@@ -281,7 +287,7 @@ class RPM:
     cache_fname = "cache_rpm.yaml"
     current_cache = []
     current_cache_fname = None
-    log_prefix = "zypper-log-"
+    log_prefix = "zypper-rpm-log-"
 
     def __init__(self, tool, rpmfname):
         self.tool = tool
@@ -673,24 +679,29 @@ for tool in targets:
         local_provided.print_provided()
 
         # determine whether packages are missing something preventing the build
-        tomake = set()
-        skipped = set()
-        missing_txt = ''
+        tomake = []
+        skipped = []
+        missing_txt = []
         for k, s in specs.items():
             if s.can_build(system_provided, local_provided):
-                tomake.add(k)
+                tomake.append(k)
             else:
-                missing_txt += '{name}({spec}) has missing dependencies: '.format(name = s.name,
-                                                                                  spec = s.specfname)
-                missing_txt += " ".join(s.missing) + "\n"
-                skipped.add(k)
+                mt = '{name}({spec}) has missing dependencies: '.format(name = s.name,
+                                                                        spec = s.specfname)
+                mt += " ".join(s.missing)
+                missing_txt.append(mt)
+                skipped.append(k)
 
         if system_provided.was_checking():
             print()
             system_provided.write_cache()
 
         if len(missing_txt) > 0:
-            print(missing_txt)
+            missing_txt.sort()
+            print("\n\n".join(missing_txt))
+
+        tomake.sort()
+        skipped.sort()
 
         # summarize findings
         print()
@@ -731,8 +742,8 @@ for tool in targets:
             f.write(make)
 
         # start make in the background
-        logfname = os.path.join(bdir, "build.log")
-        print('Starting build with the log available at', logfname)
+        logfname = os.path.join(logdir(tool), "build.log")
+        print('\nStarting build with the log available at', logfname)
         with open(logfname, "w") as flog:
             po = subprocess.Popen(["make", "-f", makefname],
                                   bufsize = 0,
@@ -746,7 +757,7 @@ for tool in targets:
                 print('Build successful\n')
 
         # current summary for this toolkit
-        summary[tool] = "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped)
+        summary[tool] = "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped) + "\n"
 
         # update conditions
         first_iteration = False
@@ -766,12 +777,12 @@ for tool in targets:
     # list packages in the order they were built
     ready = [ (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec")) ]
     ready.sort()
-    print('Packages were built in the following order:\n')
+    summary[tool] += '\nPackages were built in the following order:\n'
     for p in ready:
-        print(datetime.datetime.fromtimestamp(p[0]).strftime('%x %X'), p[1])
+        summary[tool] += datetime.datetime.fromtimestamp(p[0]).strftime('%x %X') + " " + p[1] + "\n"
 
 print('\nAll builds finished\n')
 
 for t, s in summary.items():
-    print(t,':')
+    print(t,'\n')
     print(s, '\n\n')
