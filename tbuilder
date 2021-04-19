@@ -26,6 +26,12 @@ def targetdir(tool):
 def logdir(tool):
     return os.path.join(builddir(tool), 'logs')
 
+def current_build_successful_flag(tool):
+    return os.path.join(builddir(tool), "last_package_success.txt")
+
+success_txt_for_error = \
+    "@@@ THIS IS A SUCCESSFUL BUILD THAT WAS FINISHED FOR UPDATING PACKAGE DEPENDENCIES. IGNORE THE ERROR BELOW @@@"
+
 # helper for running commands
 def run_with_check(cmd, check_error=True, cwd = None):
     if isinstance(cmd, str):
@@ -118,6 +124,8 @@ class Commands:
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
+        make += '\t@echo %s > %s\n' % (specpath, current_build_successful_flag(tool))
+        make += '\t@echo %s\n' % success_txt_for_error
         return make
 
     def refresh_system(self, tool):
@@ -440,6 +448,7 @@ class Spec:
 
         # finalize
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
+        make += '\texit 1\n'
         make += '\n'
         return make
 
@@ -631,6 +640,11 @@ for tool in targets:
             # install requested packages, could have been updated during prev iteration
             install_extras(tool, install_extra_packages, rdir)
 
+        # remove successful build indicator if exists
+        flag = current_build_successful_flag(tool)
+        if os.path.exists(flag):
+            os.remove(flag)
+
         # query provided symbols in current ready RPMs
         local_provided = LocalProvided(tool)
 
@@ -750,9 +764,16 @@ for tool in targets:
                                   stdout=flog, stderr=subprocess.STDOUT)
             result = po.wait()
             if result != 0:
-                print('Error while running Make. See log for details')
-                summary[tool] = 'Error while running Make. See {log} for details'.format(log = logfname)
-                break
+                # let's see if it was triggered
+                flag = current_build_successful_flag(tool)
+                if os.path.exists(flag):
+                    with open(flag, "r") as fflag:
+                        package_last = fflag.read()
+                    print('Build successful:', package_last)
+                else:
+                    print('Error while running Make. See log for details')
+                    summary[tool] = 'Error while running Make. See {log} for details'.format(log = logfname)
+                    break
             else:
                 print('Build successful\n')
 
