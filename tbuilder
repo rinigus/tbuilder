@@ -124,7 +124,7 @@ class Commands:
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
-        make += '\t@echo %s > %s\n' % (specpath, current_build_successful_flag(tool))
+        make += '\t@echo %s > %s\n' % (os.path.basename(specpath), current_build_successful_flag(tool))
         make += '\t@echo %s\n' % success_txt_for_error
         return make
 
@@ -269,10 +269,12 @@ class LocalProvided:
             os.remove(f)
 
     def print_provided(self):
-        if len(self._provided) > 0:
+        if len(self._provided) < 10:
             p = list(self._provided)
             p.sort()
             print('Available local provided symbols:', " ".join(p), "\n")
+        elif len(self._provided) > 0:
+            print('Available local provided symbols:', len(self._provided), "symbols\n")
 
     def _write_target_if_absent(self, p, refname):
         tname = target_provides(p, self.tool)
@@ -681,7 +683,7 @@ for tool in targets:
         for rk in rkeys:
             r = rpms[rk]
             if len(r.missing) > 0:
-                print(os.path.basename(r.rpmfname), 'not used:',
+                print('-', os.path.basename(r.rpmfname), 'not used:',
                       " ".join(r.missing))
                 hadmissing = True
         if hadmissing: print()
@@ -700,8 +702,8 @@ for tool in targets:
             if s.can_build(system_provided, local_provided):
                 tomake.append(k)
             else:
-                mt = '{name}({spec}) has missing dependencies: '.format(name = s.name,
-                                                                        spec = s.specfname)
+                mt = '- {name}({spec}) has missing dependencies: '.format(name = s.name,
+                                                                          spec = s.specfname)
                 mt += " ".join(s.missing)
                 missing_txt.append(mt)
                 skipped.append(k)
@@ -712,7 +714,7 @@ for tool in targets:
 
         if len(missing_txt) > 0:
             missing_txt.sort()
-            print("\n\n".join(missing_txt))
+            print("\n".join(missing_txt))
 
         tomake.sort()
         skipped.sort()
@@ -757,7 +759,7 @@ for tool in targets:
 
         # start make in the background
         logfname = os.path.join(logdir(tool), "build.log")
-        print('\nStarting build with the log available at', logfname)
+        print('\nStarting build with the log available at', logfname, '\n')
         with open(logfname, "w") as flog:
             po = subprocess.Popen(["make", "-f", makefname],
                                   bufsize = 0,
