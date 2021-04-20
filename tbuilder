@@ -300,6 +300,7 @@ class RPM:
     log_prefix = "zypper-rpm-log-"
 
     def __init__(self, tool, rpmfname):
+        print(rpmfname, flush=True, end=': ')
         self.tool = tool
         self.rpmfname = rpmfname
         self.short_rpmfname = os.path.basename(self.rpmfname)
@@ -307,6 +308,7 @@ class RPM:
         self.missing = []
         self.log_check_fname = os.path.join(logdir(self.tool),
                                             RPM.log_prefix + self.short_rpmfname + ".xml")
+        print('Done')
 
     def can_use(self):
         # expect that if RPM was installable once, it will hold later in the build
@@ -379,6 +381,7 @@ class RPM:
 class Spec:
     # handle SPEC
     def __init__(self, s, macros):
+        print(s, flush=True, end=': ')
         self.specfname = s
         # determine src and spec abs path
         ## handle case where we can have relative symbolic links
@@ -399,6 +402,7 @@ class Spec:
                                                   '--buildrequires', macros, cwd = self.srcpath)
         self.requires = set(self.requires)
         self.missing = set()
+        print(self.name)
 
     def __str__(self):
         return "{name}: {specfname}  / requires: {requires} / missing: {missing}".format(**self.__dict__)
@@ -615,14 +619,11 @@ for tool in targets:
     install_extras(tool, install_extra_packages, rdir)
 
     # load SPECs and their properties
+    print('Loading SPECs:\n')
     specs = {}
     for f in glob.glob(os.path.join(specdir,"*.spec")):
         s = Spec(f, macros)
         specs[ s.name ] = s
-
-    print('Loaded SPECs:\n')
-    for _, s in specs.items():
-        print(s.specfname, ':', s.name)
     print()
 
     # track states
@@ -631,7 +632,9 @@ for tool in targets:
     RPM.update_cache(tool)
 
     # load RPMs
+    print('Loading RPMs:\n')
     rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))}
+    print()
 
     # start build loop
     Done = False
@@ -759,7 +762,7 @@ for tool in targets:
 
         # start make in the background
         logfname = os.path.join(logdir(tool), "build.log")
-        print('\nStarting build with the log available at', logfname, '\n')
+        print('\nStarting build with the log available at', os.path.join(project, logfname), '\n')
         with open(logfname, "w") as flog:
             po = subprocess.Popen(["make", "-f", makefname],
                                   bufsize = 0,
