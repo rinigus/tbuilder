@@ -21,6 +21,9 @@ def rpmdir(root, tool):
 def builddir(tool):
     return os.path.join('build', tool)
 
+def releasedir(tool):
+    return os.path.join(builddir(tool), 'release')
+
 def targetdir(tool):
     return os.path.join(builddir(tool), 'target')
 
@@ -109,8 +112,14 @@ class Commands:
             print("Failed this time")
 
     def make_section(self, tool, bdir, rpmpath, specpath,
-                     buildoptions, srcpath, rpmbuild):
+                     buildoptions, srcpath, rpmbuild,
+                     release, releasefile):
         make = ''
+        make += '\t' + \
+            '(cd {bdir} && sed -i "s/^Release:.*\\S/&.{release}/" {spec})\n'.format(bdir=bdir,
+                                                                                    release=release,
+                                                                                    spec=specpath)
+
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
@@ -125,6 +134,8 @@ class Commands:
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
+        # update release and success flag
+        make += '\t@echo {release} > {relfile}\n'.format(release=release, relfile=releasefile)
         make += '\t@echo %s > %s\n' % (os.path.basename(specpath), current_build_successful_flag(tool))
         make += '\t@echo %s\n' % success_txt_for_error
         return make
@@ -419,6 +430,20 @@ class Spec:
                 self.missing.add(r)
         return len(self.missing) == 0
 
+    def load_release(self, tool):
+        rfile = os.path.join(releasedir(tool), os.path.basename(self.specfname))
+        release = 0
+        if os.path.exists(rfile):
+            with open(rfile, 'r') as f:
+                t = f.read()
+                try:
+                    release = int(t)
+                except:
+                    pass
+        release += 1
+        return rfile, release
+
+
     def make_spec(self, local_provided, tool, rpmroot, buildoptions, macros, insource):
         req = [rsimple for r, rsimple in self.requires_full.items() if local_provided.provided(r, rsimple)]
         make = target_spec(self.specfname, tool) + \
@@ -437,6 +462,8 @@ class Spec:
             rpmbuild = " " + " ".join(['--define="%s"' % m for m in macros])
         else:
             rpmbuild = ""
+        # get release info
+        relfile, release = self.load_release(tool)
         # write build section
         make += '\t' + '@echo\n'
         make += '\t' + '@echo Building %s for %s\n' % (self.specfname, tool)
@@ -454,7 +481,8 @@ class Spec:
 
         make += commands.make_section(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
                                       buildoptions = buildoptions,
-                                      srcpath = srcpath, rpmbuild = rpmbuild)
+                                      srcpath = srcpath, rpmbuild = rpmbuild,
+                                      release = release, releasefile = relfile)
 
         # finalize
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
@@ -616,6 +644,7 @@ for tool in targets:
     bdir = builddir(tool)
     os.makedirs(rdir, exist_ok = True)
     os.makedirs(bdir, exist_ok = True)
+    os.makedirs(releasedir(tool), exist_ok = True)
     os.makedirs(targetdir(tool), exist_ok = True)
     os.makedirs(logdir(tool), exist_ok = True)
 
