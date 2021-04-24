@@ -112,14 +112,8 @@ class Commands:
             print("Failed this time")
 
     def make_section(self, tool, bdir, rpmpath, specpath,
-                     buildoptions, srcpath, rpmbuild,
-                     release, releasefile):
+                     buildoptions, srcpath, rpmbuild):
         make = ''
-        make += '\t' + \
-            '(cd {bdir} && sed -i "s/^Release:.*\\S/&.{release}/" {spec})\n'.format(bdir=bdir,
-                                                                                    release=release,
-                                                                                    spec=specpath)
-
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
@@ -134,8 +128,7 @@ class Commands:
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
 
-        # update release and success flag
-        make += '\t@echo {release} > {relfile}\n'.format(release=release, relfile=releasefile)
+        # update success flag
         make += '\t@echo %s > %s\n' % (os.path.basename(specpath), current_build_successful_flag(tool))
         make += '\t@echo %s\n' % success_txt_for_error
         return make
@@ -463,7 +456,10 @@ class Spec:
         else:
             rpmbuild = ""
         # get release info
-        relfile, release = self.load_release(tool)
+        if insource:
+            relfile, release = self.load_release(tool)
+        else:
+            relfile, release = None, None
         # write build section
         make += '\t' + '@echo\n'
         make += '\t' + '@echo Building %s for %s\n' % (self.specfname, tool)
@@ -479,13 +475,20 @@ class Spec:
         else:
             srcpath = self.srcpath
 
+        if release is not None:
+            make += '\t' + \
+                '(cd {bdir} && sed -i "s/^Release:.*\\S/&.{release}/" {spec})\n'.format(bdir=bdir,
+                                                                                        release=release,
+                                                                                        spec=specpath)
+
         make += commands.make_section(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
                                       buildoptions = buildoptions,
-                                      srcpath = srcpath, rpmbuild = rpmbuild,
-                                      release = release, releasefile = relfile)
+                                      srcpath = srcpath, rpmbuild = rpmbuild)
 
         # finalize
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
+        if release is not None:
+            make += '\t@echo {release} > {relfile}\n'.format(release=release, relfile=relfile)
         make += '\texit 1\n'
         make += '\n'
         return make
