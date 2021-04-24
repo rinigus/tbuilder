@@ -259,7 +259,7 @@ class LocalProvided:
         # remove all target files that are not known about
         known_fnames = [target_provides(p, self.tool) for p in self._provided]
         to_delete = []
-        for f in glob.glob(os.path.join(targetdir(tool), "*")):
+        for f in sorted(glob.glob(os.path.join(targetdir(tool), "*"))):
             if f.endswith(".spec"):
                 # target made by spec compilation
                 pass
@@ -307,12 +307,12 @@ class RPM:
         self.short_rpmfname = os.path.basename(self.rpmfname)
         self.name = query(tool, 'rpm', rpmfname,
                           '--queryformat=%{NAME} ', check_error=False)[0][0]
-        self.mtime = os.stat(rpmfname).st_mtime
+        self.mtime = os.path.getmtime(rpmfname)
         self.provides = set(query(tool, 'rpm', rpmfname, '--provides', check_error=False)[0])
         self.missing = []
         self.log_check_fname = os.path.join(logdir(self.tool),
                                             RPM.log_prefix + self.short_rpmfname + ".xml")
-        print(self.name, 'Done')
+        print('Done')
 
     def can_use(self):
         # expect that if RPM was installable once, it will hold later in the build
@@ -625,7 +625,7 @@ for tool in targets:
     # load SPECs and their properties
     print('Loading SPECs:\n')
     specs = {}
-    for f in glob.glob(os.path.join(specdir,"*.spec")):
+    for f in sorted(glob.glob(os.path.join(specdir,"*.spec"))):
         s = Spec(f, macros)
         specs[ s.name ] = s
     print()
@@ -637,7 +637,7 @@ for tool in targets:
 
     # load RPMs
     print('Loading RPMs:\n')
-    rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in glob.glob(os.path.join(rdir, "*.rpm"))}
+    rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm")))}
     print()
 
     # start build loop
@@ -659,7 +659,7 @@ for tool in targets:
 
         # update with new RPMs
         rpmfiles = []
-        for rpmfname in glob.glob(os.path.join(rdir, "*.rpm")):
+        for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
             rpmfiles.append(rpmfname)
             if rpmfname not in rpms:
                 rpms[rpmfname] = RPM(tool, rpmfname)
@@ -671,11 +671,11 @@ for tool in targets:
         for _, rlist in rpms_by_name.items():
             if len(rlist) > 1:
                 rlist.sort(key=lambda x: x.mtime)
-                # remove all but the last file. cleanup of internal structure is
-                # done later
+                # remove all but the last file
                 for r in rlist[:-1]:
-                    print('Removing older version:', r.rpmfname)
+                    print('Removing old build:', r.rpmfname)
                     os.remove(r.rpmfname)
+                    del rpms[r.rpmfname]
 
         # drop missing RPMs
         to_del = []
