@@ -674,6 +674,7 @@ for tool in targets:
 
     # start build loop
     Done = False
+    Error = False
     first_iteration = True
     while not Done:
 
@@ -827,6 +828,7 @@ for tool in targets:
                 else:
                     print('Error while running Make. See log for details')
                     summary[tool] = 'Error while running Make. See {log} for details'.format(log = logfname)
+                    Error = True
                     break
             else:
                 print('Build successful\n')
@@ -856,8 +858,14 @@ for tool in targets:
     for p in ready:
         summary[tool] += datetime.datetime.fromtimestamp(p[0]).strftime('%x %X') + " " + p[1] + "\n"
 
+    if Error:
+        break
+
 print('\nAll builds finished\n')
 
 for t, s in summary.items():
     print(t,'\n')
     print(s, '\n\n')
+
+if Error:
+    sys.exit(7)
