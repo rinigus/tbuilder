@@ -66,6 +66,9 @@ class Commands:
     def set_project(self, project):
         self.project = project
 
+    def target_base(self, tool):
+        return tool
+
     def target_snapshot(self, tool):
         return "%s.%s" % (tool, self.project)
 
@@ -74,7 +77,7 @@ class Commands:
             cmd = "sfdk engine exec "
         else:
             cmd = ""
-        cmd += "sdk-manage target snapshot %s %s" % (tool, self.target_snapshot(tool))
+        cmd += "sdk-manage target snapshot --reset=force %s %s" % (tool, self.target_snapshot(tool))
         proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(cmd)
         print(proc.stdout.decode('utf-8'))
@@ -134,11 +137,12 @@ class Commands:
         return make
 
     def refresh_system(self, tool):
+        tgt = self.target_base(tool)
         if self.use_sfdk:
-            cmd = "sfdk tools exec %s zypper refresh" % self.target_snapshot(tool)
+            cmd = "sfdk tools exec %s zypper --non-interactive refresh" % tgt
         else:
-            cmd = "sb2 -t %s -R zypper refresh" % self.target_snapshot(tool)
-        print('Refreshing zypper cache for', self.target_snapshot(tool))
+            cmd = "sb2 -t %s -R zypper --non-interactive refresh" % tgt
+        print('Refreshing zypper cache for', tgt)
         s, e = run_with_check(cmd)
         print(s)
 
@@ -161,7 +165,7 @@ class Commands:
         else:
             cmd = ["sb2", "-t", self.target_snapshot(tool), "-R"]
         cmd.extend(["zypper", "-x", "-p", dname])
-        cmd.extend( ("in --dry-run --download-only -y --allow-unsigned-rpm").split() )
+        cmd.extend( ("in --dry-run --download-only -y --allow-vendor-change --allow-unsigned-rpm").split() )
         cmd.append(fname)
         return cmd
 
@@ -633,9 +637,9 @@ for tool in targets:
     print('Starting builds for', tool, '\n')
 
     # initialize for each target
-    print("Create snapshot if it is missing")
-    commands.make_snapshot(tool)
     commands.refresh_system(tool)
+    print("Create snapshot if it is missing or reset it")
+    commands.make_snapshot(tool)
 
     # remove createrepo-generated repodata
     repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
@@ -679,7 +683,8 @@ for tool in targets:
     while not Done:
 
         if not first_iteration:
-            # install requested packages, could have been updated during prev iteration
+            # reset snapshot and install requested packages
+            commands.make_snapshot(tool)
             install_extras(tool, install_extra_packages, rdir)
 
         # remove successful build indicator if exists
