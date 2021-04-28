@@ -92,8 +92,7 @@ class Commands:
         cmd += os.path.abspath(rpmpath)
         run_with_check(cmd)
 
-    def install_package(self, tool, package, force=False, extra_repo=None):
-        print('Installing', package, flush=True, end=": ")
+    def install_package_cmd(self, tool, package, force=False, extra_repo=None):
         if self.use_sfdk:
             cmd = "sfdk tools exec %s " % self.target_snapshot(tool)
         else:
@@ -105,6 +104,11 @@ class Commands:
         if force:
             cmd += "--force-resolution "
         cmd += "-y --allow-vendor-change --allow-unsigned-rpm " + package
+        return cmd
+
+    def install_package(self, tool, package, force=False, extra_repo=None):
+        print('Installing', package, flush=True, end=": ")
+        cmd = self.install_package_cmd(tool=tool, package=package, force=force, extra_repo=extra_repo)
         proc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         with open( os.path.join(logdir(tool),
                                 "zypper-install-" + package + ".log"), "w" ) as f:
@@ -120,20 +124,20 @@ class Commands:
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
-            make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
+            #make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
             make += '\t' + 'sfdk config snapshot=%s \n' % self.project
             make += '\t' + '(cd %s && ' % bdir
             make += 'sfdk config specfile=' + specpath + ' && '
             make += 'sfdk build -d %s %s %s)\n' % (buildoptions, srcpath, rpmbuild)
         else:
+            # make += '\t' + \
+            #     '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
+            #         bdir = bdir, target = tool, output = rpmpath, spec = specpath,
+            #         snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
             make += '\t' + \
-                '(cd {bdir} && mb2 -t {target} -o {output} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
+                '(cd {bdir} && mb2 -t {target} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
-
-        # update success flag
-        make += '\t@echo %s > %s\n' % (os.path.basename(specpath), current_build_successful_flag(tool))
-        make += '\t@echo %s\n' % success_txt_for_error
         return make
 
     def refresh_system(self, tool):
@@ -485,14 +489,21 @@ class Spec:
                                                                                         release=release,
                                                                                         spec=specpath)
 
+        make += '\t' + commands.install_package_cmd(tool = tool,
+                                                    force=True, extra_repo=rpmpath,
+                                                    package = " ".join(req)) + '\n'
         make += commands.make_section(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
                                       buildoptions = buildoptions,
                                       srcpath = srcpath, rpmbuild = rpmbuild)
+        make += '\t(cd {bdir} && mv RPMS/*.rpm {rpmpath})\n'.format(bdir=bdir, rpmpath = rpmpath)
 
         # finalize
         make += '\ttouch ' + target_spec(self.specfname, tool) + '\n'
         if release is not None:
             make += '\t@echo {release} > {relfile}\n'.format(release=release, relfile=relfile)
+        # update success flag
+        make += '\t@echo %s > %s\n' % (os.path.basename(specpath), current_build_successful_flag(tool))
+        make += '\t@echo %s\n' % success_txt_for_error
         make += '\texit 1\n'
         make += '\n'
         return make
