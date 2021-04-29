@@ -54,6 +54,7 @@ def run_with_check(cmd, check_error=True, cwd = None):
 class Commands:
     def __init__(self):
         self.project = ""
+        self.allow_vendor_change = False
         # check whether to use sfdk or not
         if shutil.which("mb2") is not None and shutil.which("sb2") is not None:
             self.use_sfdk = False
@@ -62,9 +63,6 @@ class Commands:
         else:
             print('Cannot find sfdk nor sb2/mb2')
             sys.exit(-1)
-
-    def set_project(self, project):
-        self.project = project
 
     def target_base(self, tool):
         return tool
@@ -103,7 +101,9 @@ class Commands:
         cmd += "in "
         if force:
             cmd += "--force-resolution "
-        cmd += "-y --allow-vendor-change --allow-unsigned-rpm " + package
+        cmd += "-y --allow-unsigned-rpm "
+        if self.allow_vendor_change: cmd += '--allow-vendor-change '
+        cmd += package
         return cmd
 
     def install_package(self, tool, package, force=False, extra_repo=None):
@@ -158,7 +158,9 @@ class Commands:
         else:
             cmd = ["sb2", "-t", self.target_snapshot(tool), "-R"]
         cmd.extend(["zypper", "-x", "-p", dname])
-        cmd.extend( ("in --dry-run --download-only -y --allow-vendor-change --allow-unsigned-rpm").split() )
+        cmd.extend( ("in --dry-run --download-only -y --allow-unsigned-rpm").split() )
+        if self.allow_vendor_change:
+            cmd.append('--allow-vendor-change')
         cmd.append(fname)
         return cmd
 
@@ -611,6 +613,7 @@ project_name = config.get('project', '')
 targets = config.get('targets', [])
 rpmrootdir = config.get('rpms', '')
 macros = config.get('macros', [])
+project_options = config.get('options', [])
 buildoptions = config.get('buildoptions', '')
 shadow_builds = config.get('shadow_builds', [])
 install_extra_packages = config.get('install', [])
@@ -631,7 +634,11 @@ if len(rpmrootdir) < 1:
     print('No RPMS directory specified in the project config.yaml')
     sys.exit(-1)
 
-commands.set_project(project_name)
+# check specified options
+if 'allow-vendor-change' in project_options:
+    commands.allow_vendor_change = True
+
+commands.project = project_name
 
 # main loop
 summary = {}
