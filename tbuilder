@@ -842,7 +842,7 @@ for tool in targets:
                     print('Build successful:', package_last)
                 else:
                     print('Error while running Make. See log for details')
-                    summary[tool] = 'Error while running Make. See {log} for details'.format(log = logfname)
+                    summary[tool] = 'Error while running Make. See {log} for details'.format(log = os.path.join(project, logfname))
                     Error = True
                     break
             else:
