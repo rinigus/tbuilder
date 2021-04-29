@@ -43,6 +43,11 @@ The following fields are required:
 
 The following fields are optional:
 
+* `options` (list of strings) specify project options. Currently, the
+  following options can be set:
+  * `allow-vendor-change` Allow to change vendor while installing packages
+    from project RPMS directory
+
 * `buildoptions` (string) additional options to pass to `sfdk
   build`. For example, `-j4`.
 
