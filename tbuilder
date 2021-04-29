@@ -489,9 +489,10 @@ class Spec:
                                                                                         release=release,
                                                                                         spec=specpath)
 
-        make += '\t' + commands.install_package_cmd(tool = tool,
-                                                    force=True, extra_repo=rpmpath,
-                                                    package = " ".join(req)) + '\n'
+        if len(req) > 0:
+            make += '\t' + commands.install_package_cmd(tool = tool,
+                                                        force=True, extra_repo=rpmpath,
+                                                        package = " ".join(['"%s"' % r for r in req])) + '\n'
         make += commands.make_section(bdir = bdir, tool = tool, rpmpath = rpmpath, specpath = specpath,
                                       buildoptions = buildoptions,
                                       srcpath = srcpath, rpmbuild = rpmbuild)
