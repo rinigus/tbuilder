@@ -124,6 +124,7 @@ class Commands:
         if self.use_sfdk:
             make += '\t' + 'sfdk config no-fix-version\n'
             make += '\t' + 'sfdk config target=' + tool + '\n'
+            make += '\t' + 'sfdk config --drop output-dir\n'
             #make += '\t' + 'sfdk config output-dir=' + rpmpath + '\n'
             make += '\t' + 'sfdk config snapshot=%s \n' % self.project
             make += '\t' + '(cd %s && ' % bdir
