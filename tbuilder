@@ -239,6 +239,16 @@ def make_dir(dname):
         '\ttouch ' + target_dir(dname) + '\n' + \
         '\n'
 
+# misc functions
+def load_rpm(rpm, skip_rpms):
+    r = os.path.basename(rpm)
+    for p in skip_rpms:
+        if p.match(r):
+            print('Skipping', rpmfname)
+            return False
+    return True
+
+
 class LocalProvided:
     # symbols provided by local RPMs
     def __init__(self, tool):
@@ -618,11 +628,9 @@ project_options = config.get('options', [])
 buildoptions = config.get('buildoptions', '')
 shadow_builds = config.get('shadow_builds', [])
 install_extra_packages = config.get('install', [])
+skip_rpms = config.get('skip_rpms', [])
 specdir = "spec"
 repodir = "repodata"
-
-# add subdir to required keys
-shadow_builds = [ os.path.join(specdir, k) for k in shadow_builds ]
 
 # check for required parameters
 if len(project_name) < 1:
@@ -634,6 +642,12 @@ if len(targets) < 1:
 if len(rpmrootdir) < 1:
     print('No RPMS directory specified in the project config.yaml')
     sys.exit(-1)
+
+# add subdir to required keys
+shadow_builds = [ os.path.join(specdir, k) for k in shadow_builds ]
+
+# prepare re expressions
+skip_rpms = [ re.compile(s) for s in skip_rpms ]
 
 # check specified options
 if 'allow-vendor-change' in project_options:
@@ -683,7 +697,10 @@ for tool in targets:
 
     # load RPMs
     print('Loading RPMs:\n')
-    rpms = {rpmfname: RPM(tool, rpmfname) for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm")))}
+    rpms = {}
+    for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
+        if load_rpm(rpmfname, skip_rpms):
+            rpms[rpmfname] = RPM(tool, rpmfname)
     print()
 
     # start build loop
@@ -709,7 +726,7 @@ for tool in targets:
         rpmfiles = []
         for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
             rpmfiles.append(rpmfname)
-            if rpmfname not in rpms:
+            if rpmfname not in rpms and load_rpm(rpmfname, skip_rpms):
                 rpms[rpmfname] = RPM(tool, rpmfname)
 
         # keep only one version of rpm with the same name

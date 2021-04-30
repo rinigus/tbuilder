@@ -64,6 +64,12 @@ The following fields are optional:
 * `shadow_builds` (list of strings) SPEC packages that will be built
   using shadow builds approach (see SDK documentation).
 
+* `skip_rpms` (list of strings) regex expressions that are matched
+  against compiled RPM file basenames. If the filename matches (Python
+  re.match) then the corresponding RPM is not loaded and its provided
+  symbols are not considered. Useful for larger builds with some of
+  RPMs not used a build dependencies for others.
+
 ## Requirements
 
 Requirements are
