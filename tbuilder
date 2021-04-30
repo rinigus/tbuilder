@@ -244,7 +244,6 @@ def load_rpm(rpm, skip_rpms):
     r = os.path.basename(rpm)
     for p in skip_rpms:
         if p.match(r):
-            print('Skipping', rpmfname)
             return False
     return True
 
