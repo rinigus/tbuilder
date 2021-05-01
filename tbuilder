@@ -322,7 +322,6 @@ class RPM:
         # skip the check if requested in the project config
         for p in skip_rpms:
             if p.match(self.short_rpmfname):
-                print('Skipping', self.short_rpmfname)
                 return False
 
         # expect that if RPM was installable once, it will hold later in the build
