@@ -239,15 +239,6 @@ def make_dir(dname):
         '\ttouch ' + target_dir(dname) + '\n' + \
         '\n'
 
-# misc functions
-def load_rpm(rpm, skip_rpms):
-    r = os.path.basename(rpm)
-    for p in skip_rpms:
-        if p.match(r):
-            return False
-    return True
-
-
 class LocalProvided:
     # symbols provided by local RPMs
     def __init__(self, tool):
@@ -327,7 +318,13 @@ class RPM:
                                             RPM.log_prefix + self.short_rpmfname + ".xml")
         print('Done')
 
-    def can_use(self):
+    def can_use(self, skip_rpms):
+        # skip the check if requested in the project config
+        for p in skip_rpms:
+            if p.match(self.short_rpmfname):
+                print('Skipping', self.short_rpmfname)
+                return False
+
         # expect that if RPM was installable once, it will hold later in the build
         if RPM.is_cached(self.rpmfname):
             return True
@@ -698,8 +695,7 @@ for tool in targets:
     print('Loading RPMs:\n')
     rpms = {}
     for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
-        if load_rpm(rpmfname, skip_rpms):
-            rpms[rpmfname] = RPM(tool, rpmfname)
+        rpms[rpmfname] = RPM(tool, rpmfname)
     print()
 
     # start build loop
@@ -725,7 +721,7 @@ for tool in targets:
         rpmfiles = []
         for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
             rpmfiles.append(rpmfname)
-            if rpmfname not in rpms and load_rpm(rpmfname, skip_rpms):
+            if rpmfname not in rpms:
                 rpms[rpmfname] = RPM(tool, rpmfname)
 
         # keep only one version of rpm with the same name
@@ -756,7 +752,7 @@ for tool in targets:
         # as dependencies are checked by zypper, no need to iterate as we
         # populate local_provided
         for _, r in rpms.items():
-            if r.can_use():
+            if r.can_use(skip_rpms):
                 local_provided.add_provided(r.provides, r.rpmfname)
         print()
 
