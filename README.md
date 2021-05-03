@@ -70,6 +70,7 @@ The following fields are optional:
   symbols are not considered. Useful for larger builds with some of
   RPMs not used a build dependencies for others.
 
+
 ## Requirements
 
 Requirements are
@@ -84,3 +85,21 @@ Requirements are
   have to install `make` into that shell as `make` is not installed by
   default in Application SDK. For that, login as root and run `zypper
   in make`.
+
+
+## Caches
+
+To speed up the builds, there are several caches used:
+
+- `build/target/cache.yaml` Lists present and missing build requirements
+  in the target itself. If you change the target, such as add new
+  repositories, please remove this cache to get all requirements
+  checked again.
+
+- `cache_rpm.yaml` RPMs that are built in the project and were found
+  to be installable in the target. It is assumed that if it was
+  possible to install an RPM in the target once, it is possible to do
+  so later as well. This allows to skip the corresponding check later
+  in the build sequence. If for some reason you think that this
+  condition is not satisfied after your updates, remove that cache and
+  let TBuilder to regenerate it.
