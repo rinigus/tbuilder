@@ -96,10 +96,10 @@ To speed up the builds, there are several caches used:
   repositories, please remove this cache to get all requirements
   checked again.
 
-- `cache_rpm.yaml` RPMs that are built in the project and were found
-  to be installable in the target. It is assumed that if it was
-  possible to install an RPM in the target once, it is possible to do
-  so later as well. This allows to skip the corresponding check later
-  in the build sequence. If for some reason you think that this
+- `build/target/cache_rpm.yaml` RPMs that are built in the project and
+  were found to be installable in the target. It is assumed that if it
+  was possible to install an RPM in the target once, it is possible to
+  do so later as well. This allows to skip the corresponding check
+  later in the build sequence. If for some reason you think that this
   condition is not satisfied after your updates, remove that cache and
   let TBuilder to regenerate it.
