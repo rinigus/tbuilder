@@ -86,7 +86,7 @@ class Commands:
         if self.use_sfdk:
             cmd = "sfdk tools exec %s createrepo_c " % self.target_snapshot(tool)
         else:
-            cmd = "sb2 -t %s createrepo_c " % self.target_snapshot(tool)
+            cmd = "sb2 -t %s -m sdk-install createrepo_c " % self.target_snapshot(tool)
         cmd += os.path.abspath(rpmpath)
         run_with_check(cmd)
 
@@ -94,7 +94,7 @@ class Commands:
         if self.use_sfdk:
             cmd = "sfdk tools exec %s " % self.target_snapshot(tool)
         else:
-            cmd = "sb2 -t %s -R " % self.target_snapshot(tool)
+            cmd = "sb2 -t %s -m sdk-install -R " % self.target_snapshot(tool)
         cmd += "zypper "
         if extra_repo is not None:
             cmd += "-p " + os.path.abspath(extra_repo) + " "
@@ -146,7 +146,7 @@ class Commands:
         if self.use_sfdk:
             cmd = "sfdk tools exec %s zypper --non-interactive refresh" % tgt
         else:
-            cmd = "sb2 -t %s -R zypper --non-interactive refresh" % tgt
+            cmd = "sb2 -t %s -m sdk-install -R zypper --non-interactive refresh" % tgt
         print('Refreshing zypper cache for', tgt)
         s, e = run_with_check(cmd)
         print(s)
@@ -157,7 +157,7 @@ class Commands:
         if self.use_sfdk:
             cmd = ["sfdk", "tools", "exec", self.target_snapshot(tool)]
         else:
-            cmd = ["sb2", "-t", self.target_snapshot(tool), "-R"]
+            cmd = ["sb2", "-t", self.target_snapshot(tool), "-m", "sdk-install", "-R"]
         cmd.extend(["zypper", "-x", "-p", dname])
         cmd.extend( ("in --dry-run --download-only -y --allow-unsigned-rpm").split() )
         if self.allow_vendor_change:
@@ -171,7 +171,7 @@ class Commands:
             run_with_check("sfdk config target=" + tool)
             run_with_check("sfdk config snapshot=%s" % self.project)
             return "sfdk build-shell %s" % cmd
-        return "sb2 -t %s %s"  % (self.target_snapshot(tool), cmd)
+        return "sb2 -t %s -m sdk-install %s"  % (self.target_snapshot(tool), cmd)
 
 # global commands instance
 commands = Commands()
