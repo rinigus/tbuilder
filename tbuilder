@@ -136,7 +136,7 @@ class Commands:
             #         bdir = bdir, target = tool, output = rpmpath, spec = specpath,
             #         snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
             make += '\t' + \
-                '(cd {bdir} && mb2 -t {target} -s {spec} --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
+                '(cd {bdir} && mb2 -t {target} -s {spec} -X --snapshot={snap} build -d {bopts} {src} {rpmbuild})\n'.format(
                     bdir = bdir, target = tool, output = rpmpath, spec = specpath,
                     snap = self.project, bopts = buildoptions, src = srcpath, rpmbuild = rpmbuild)
         return make
