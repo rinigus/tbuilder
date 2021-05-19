@@ -393,9 +393,10 @@ class RPM:
 
 class Spec:
     # handle SPEC
-    def __init__(self, s, macros):
+    def __init__(self, s, macros, keeprelease=False):
         print(s, flush=True, end=': ')
         self.specfname = s
+        self.keeprelease = keeprelease
         # determine src and spec abs path
         ## handle case where we can have relative symbolic links
         ## as well as rpm within the source dir which is symlink.
@@ -461,7 +462,7 @@ class Spec:
         else:
             rpmbuild = ""
         # get release info
-        if insource:
+        if insource and not self.keeprelease:
             relfile, release = self.load_release(tool)
         else:
             relfile, release = None, None
@@ -647,6 +648,7 @@ skip_rpms = [ re.compile(s) for s in skip_rpms ]
 # check specified options
 if 'allow-vendor-change' in project_options:
     commands.allow_vendor_change = True
+keeprelease = 'keep-release-from-spec' in project_options
 
 commands.project = project_name
 
@@ -681,7 +683,7 @@ for tool in targets:
     print('Loading SPECs:\n')
     specs = {}
     for f in sorted(glob.glob(os.path.join(specdir,"*.spec"))):
-        s = Spec(f, macros)
+        s = Spec(f, macros, keeprelease)
         specs[ s.name ] = s
     print()
 

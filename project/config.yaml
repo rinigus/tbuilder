@@ -8,6 +8,9 @@ rpms: RPMS
 
 buildoptions: -j4
 
+options:
+  - keep-release-from-spec
+
 macros:
   - sailfishos 4.0
 

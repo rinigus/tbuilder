@@ -47,6 +47,7 @@ The following fields are optional:
   following options can be set:
   * `allow-vendor-change` Allow to change vendor while installing packages
     from project RPMS directory
+  * `keep-release-from-spec` Keep release as specified in SPEC file
 
 * `buildoptions` (string) additional options to pass to `sfdk
   build`. For example, `-j4`.
