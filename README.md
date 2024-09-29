@@ -8,7 +8,7 @@ Sailfish OS Application or Platform SDKs.
 
 To define a project, create a directory with the following structure:
 
-- config.xml
+- config.yaml
 - spec/
   - symlink to SPEC (absolute or relative) in source directory
   - symlink to SPEC2 ...
