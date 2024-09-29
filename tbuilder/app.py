@@ -664,317 +664,318 @@ class TargetDirTracker:
 
 ##########################################################
 ## main
+def main():
 
-parser = argparse.ArgumentParser(description="Generate project build files")
+    parser = argparse.ArgumentParser(description="Generate project build files")
 
-parser.add_argument("project_directory", help="Directory containing project files")
+    parser.add_argument("project_directory", help="Directory containing project files")
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-project = args.project_directory
-if not os.path.isdir(project):
-    print("Project directory does not exist or is not a directory:", project)
-    sys.exit(-1)
+    project = args.project_directory
+    if not os.path.isdir(project):
+        print("Project directory does not exist or is not a directory:", project)
+        sys.exit(-1)
 
-# change to project dir
-os.chdir(project)
+    # change to project dir
+    os.chdir(project)
 
-# load config
-with open("config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+    # load config
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
 
-project_name = config.get("project", "")
-targets = config.get("targets", [])
-rpmrootdir = config.get("rpms", "")
-macros = config.get("macros", [])
-project_options = config.get("options", [])
-buildoptions = config.get("buildoptions", "")
-shadow_builds = config.get("shadow_builds", [])
-install_extra_packages = config.get("install", [])
-skip_rpms = config.get("skip_rpms", [])
-specdir = "spec"
-repodir = "repodata"
+    project_name = config.get("project", "")
+    targets = config.get("targets", [])
+    rpmrootdir = config.get("rpms", "")
+    macros = config.get("macros", [])
+    project_options = config.get("options", [])
+    buildoptions = config.get("buildoptions", "")
+    shadow_builds = config.get("shadow_builds", [])
+    install_extra_packages = config.get("install", [])
+    skip_rpms = config.get("skip_rpms", [])
+    specdir = "spec"
+    repodir = "repodata"
 
-# check for required parameters
-if len(project_name) < 1:
-    print("No project name specified in the project config.yaml")
-    sys.exit(-1)
-if len(targets) < 1:
-    print("No targets specified in the project config.yaml")
-    sys.exit(-1)
-if len(rpmrootdir) < 1:
-    print("No RPMS directory specified in the project config.yaml")
-    sys.exit(-1)
+    # check for required parameters
+    if len(project_name) < 1:
+        print("No project name specified in the project config.yaml")
+        sys.exit(-1)
+    if len(targets) < 1:
+        print("No targets specified in the project config.yaml")
+        sys.exit(-1)
+    if len(rpmrootdir) < 1:
+        print("No RPMS directory specified in the project config.yaml")
+        sys.exit(-1)
 
-# add subdir to required keys
-shadow_builds = [os.path.join(specdir, k) for k in shadow_builds]
+    # add subdir to required keys
+    shadow_builds = [os.path.join(specdir, k) for k in shadow_builds]
 
-# prepare re expressions
-skip_rpms = [re.compile(s) for s in skip_rpms]
+    # prepare re expressions
+    skip_rpms = [re.compile(s) for s in skip_rpms]
 
-# check specified options
-if "allow-vendor-change" in project_options:
-    commands.allow_vendor_change = True
-keeprelease = "keep-release-from-spec" in project_options
+    # check specified options
+    if "allow-vendor-change" in project_options:
+        commands.allow_vendor_change = True
+    keeprelease = "keep-release-from-spec" in project_options
 
-commands.project = project_name
+    commands.project = project_name
 
-# main loop
-summary = {}
-for tool in targets:
-    print("Starting builds for", tool, "\n")
+    # main loop
+    summary = {}
+    for tool in targets:
+        print("Starting builds for", tool, "\n")
 
-    # initialize for each target
-    commands.refresh_system(tool)
-    print("Create snapshot if it is missing or reset it")
-    commands.make_snapshot(tool)
+        # initialize for each target
+        commands.refresh_system(tool)
+        print("Create snapshot if it is missing or reset it")
+        commands.make_snapshot(tool)
 
-    # remove createrepo-generated repodata
-    repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
-    if os.path.exists(repodir_full):
-        shutil.rmtree(repodir_full)
+        # remove createrepo-generated repodata
+        repodir_full = os.path.join(rpmdir(rpmrootdir, tool), repodir)
+        if os.path.exists(repodir_full):
+            shutil.rmtree(repodir_full)
 
-    # prepare directories
-    rdir = rpmdir(rpmrootdir, tool)
-    bdir = builddir(tool)
-    os.makedirs(rdir, exist_ok=True)
-    os.makedirs(bdir, exist_ok=True)
-    os.makedirs(releasedir(tool), exist_ok=True)
-    os.makedirs(targetdir(tool), exist_ok=True)
-    os.makedirs(logdir(tool), exist_ok=True)
+        # prepare directories
+        rdir = rpmdir(rpmrootdir, tool)
+        bdir = builddir(tool)
+        os.makedirs(rdir, exist_ok=True)
+        os.makedirs(bdir, exist_ok=True)
+        os.makedirs(releasedir(tool), exist_ok=True)
+        os.makedirs(targetdir(tool), exist_ok=True)
+        os.makedirs(logdir(tool), exist_ok=True)
 
-    # install requested packages, could be used already during loading of SPECs
-    install_extras(tool, install_extra_packages, rdir)
+        # install requested packages, could be used already during loading of SPECs
+        install_extras(tool, install_extra_packages, rdir)
 
-    # load SPECs and their properties
-    print("Loading SPECs:\n")
-    specs = {}
-    for f in sorted(glob.glob(os.path.join(specdir, "*.spec"))):
-        s = Spec(f, macros, keeprelease)
-        specs[s.name] = s
-    print()
+        # load SPECs and their properties
+        print("Loading SPECs:\n")
+        specs = {}
+        for f in sorted(glob.glob(os.path.join(specdir, "*.spec"))):
+            s = Spec(f, macros, keeprelease)
+            specs[s.name] = s
+        print()
 
-    # track states
-    system_provided = SystemProvided(tool)
-    targets_state = TargetDirTracker(tool)
-    RPM.update_cache(tool)
+        # track states
+        system_provided = SystemProvided(tool)
+        targets_state = TargetDirTracker(tool)
+        RPM.update_cache(tool)
 
-    # load RPMs
-    print("Loading RPMs:\n")
-    rpms = {}
-    for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
-        rpms[rpmfname] = RPM(tool, rpmfname)
-    print()
-
-    # start build loop
-    Done = False
-    Error = False
-    first_iteration = True
-    while not Done:
-
-        if not first_iteration:
-            # reset snapshot and install requested packages
-            commands.make_snapshot(tool)
-            install_extras(tool, install_extra_packages, rdir)
-
-        # remove successful build indicator if exists
-        flag = current_build_successful_flag(tool)
-        if os.path.exists(flag):
-            os.remove(flag)
-
-        # query provided symbols in current ready RPMs
-        local_provided = LocalProvided(tool)
-
-        # update with new RPMs
-        rpmfiles = []
+        # load RPMs
+        print("Loading RPMs:\n")
+        rpms = {}
         for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
-            rpmfiles.append(rpmfname)
-            if rpmfname not in rpms:
-                rpms[rpmfname] = RPM(tool, rpmfname)
-
-        # keep only one version of rpm with the same name
-        rpms_by_name = collections.defaultdict(list)
-        for _, r in rpms.items():
-            rpms_by_name[r.name].append(r)
-        for _, rlist in rpms_by_name.items():
-            if len(rlist) > 1:
-                rlist.sort(key=lambda x: x.mtime)
-                # remove all but the last file
-                for r in rlist[:-1]:
-                    print("Removing old build:", r.rpmfname)
-                    os.remove(r.rpmfname)
-                    del rpms[r.rpmfname]
-
-        # drop missing RPMs
-        to_del = []
-        for rk in rpms:
-            if rk not in rpmfiles:
-                to_del.append(rk)
-        for rk in to_del:
-            del rpms[rk]
-
-        # remove old logs
-        for f in glob.glob(os.path.join(logdir(tool), RPM.log_prefix + "*")):
-            os.remove(f)
-
-        # as dependencies are checked by zypper, no need to iterate as we
-        # populate local_provided
-        for _, r in rpms.items():
-            if r.can_use(skip_rpms):
-                local_provided.add_provided(r.provides, r.rpmfname)
+            rpms[rpmfname] = RPM(tool, rpmfname)
         print()
 
-        # write out which RPMs cannot be used
-        hadmissing = False
-        rkeys = list(rpms.keys())
-        rkeys.sort()
-        for rk in rkeys:
-            r = rpms[rk]
-            if len(r.missing) > 0:
-                print("-", os.path.basename(r.rpmfname), "not used:", " ".join(r.missing))
-                hadmissing = True
-        if hadmissing:
+        # start build loop
+        Done = False
+        Error = False
+        first_iteration = True
+        while not Done:
+
+            if not first_iteration:
+                # reset snapshot and install requested packages
+                commands.make_snapshot(tool)
+                install_extras(tool, install_extra_packages, rdir)
+
+            # remove successful build indicator if exists
+            flag = current_build_successful_flag(tool)
+            if os.path.exists(flag):
+                os.remove(flag)
+
+            # query provided symbols in current ready RPMs
+            local_provided = LocalProvided(tool)
+
+            # update with new RPMs
+            rpmfiles = []
+            for rpmfname in sorted(glob.glob(os.path.join(rdir, "*.rpm"))):
+                rpmfiles.append(rpmfname)
+                if rpmfname not in rpms:
+                    rpms[rpmfname] = RPM(tool, rpmfname)
+
+            # keep only one version of rpm with the same name
+            rpms_by_name = collections.defaultdict(list)
+            for _, r in rpms.items():
+                rpms_by_name[r.name].append(r)
+            for _, rlist in rpms_by_name.items():
+                if len(rlist) > 1:
+                    rlist.sort(key=lambda x: x.mtime)
+                    # remove all but the last file
+                    for r in rlist[:-1]:
+                        print("Removing old build:", r.rpmfname)
+                        os.remove(r.rpmfname)
+                        del rpms[r.rpmfname]
+
+            # drop missing RPMs
+            to_del = []
+            for rk in rpms:
+                if rk not in rpmfiles:
+                    to_del.append(rk)
+            for rk in to_del:
+                del rpms[rk]
+
+            # remove old logs
+            for f in glob.glob(os.path.join(logdir(tool), RPM.log_prefix + "*")):
+                os.remove(f)
+
+            # as dependencies are checked by zypper, no need to iterate as we
+            # populate local_provided
+            for _, r in rpms.items():
+                if r.can_use(skip_rpms):
+                    local_provided.add_provided(r.provides, r.rpmfname)
             print()
 
-        # remove unknown target files that we cannot use
-        local_provided.cleanup()
+            # write out which RPMs cannot be used
+            hadmissing = False
+            rkeys = list(rpms.keys())
+            rkeys.sort()
+            for rk in rkeys:
+                r = rpms[rk]
+                if len(r.missing) > 0:
+                    print("-", os.path.basename(r.rpmfname), "not used:", " ".join(r.missing))
+                    hadmissing = True
+            if hadmissing:
+                print()
 
-        # print out locally provided symbols used in the build
-        local_provided.print_provided()
+            # remove unknown target files that we cannot use
+            local_provided.cleanup()
 
-        # determine whether packages are missing something preventing the build
-        tomake = []
-        skipped = []
-        missing_txt = []
-        for k, s in specs.items():
-            if s.can_build(system_provided, local_provided):
-                tomake.append(k)
-            else:
-                mt = "- {name}({spec}) has missing dependencies: ".format(name=s.name, spec=s.specfname)
-                mt += " ".join(s.missing)
-                missing_txt.append(mt)
-                skipped.append(k)
+            # print out locally provided symbols used in the build
+            local_provided.print_provided()
 
-        if system_provided.was_checking():
-            print()
-            system_provided.write_cache()
-
-        if len(missing_txt) > 0:
-            missing_txt.sort()
-            print("\n".join(missing_txt))
-
-        tomake.sort()
-        skipped.sort()
-
-        # summarize findings
-        print()
-        print("Packages included into the current build:", " ".join(tomake))
-
-        # generate Makefile
-        main_deps = ""
-
-        make = "# This is generated Makefile and can be overwritten by a script\n\n"
-        make += "all: all_packages\n\n"
-
-        main_deps += " ".join([target_spec(specs[s].specfname, tool) for s in tomake]) + " "
-
-        # create directories
-        make += make_dir(builddir(tool))
-        make += make_dir(targetdir(tool))
-        make += make_dir(rpmdir(rpmrootdir, tool))
-
-        for k, s in specs.items():
-            # skip packages that we cannot build yet
-            if k not in tomake:
-                continue
-
-            make += s.make_spec(
-                local_provided=local_provided,
-                tool=tool,
-                rpmroot=rpmrootdir,
-                buildoptions=buildoptions,
-                macros=macros,
-                insource=(s.specfname not in shadow_builds),
-            )
-
-        make += "all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n" % main_deps
-
-        # disable parallel execution
-        make += ".NOTPARALLEL:\n\n"
-
-        # write Makefile
-        makefname = os.path.join(bdir, "Makefile")
-        with open(makefname, "w") as f:
-            f.write(make)
-
-        # start make in the background
-        logfname = os.path.join(logdir(tool), "build.log")
-        print(
-            "\nStarting build with the log available at",
-            os.path.join(project, logfname),
-            "\n",
-        )
-        with open(logfname, "w") as flog:
-            po = subprocess.Popen(
-                ["make", "-f", makefname],
-                bufsize=0,
-                stdout=flog,
-                stderr=subprocess.STDOUT,
-            )
-            result = po.wait()
-            if result != 0:
-                # let's see if it was triggered
-                flag = current_build_successful_flag(tool)
-                if os.path.exists(flag):
-                    with open(flag, "r") as fflag:
-                        package_last = fflag.read()
-                    print("Build successful:", package_last)
+            # determine whether packages are missing something preventing the build
+            tomake = []
+            skipped = []
+            missing_txt = []
+            for k, s in specs.items():
+                if s.can_build(system_provided, local_provided):
+                    tomake.append(k)
                 else:
-                    print("Error while running Make. See log for details")
-                    summary[tool] = "Error while running Make. See {log} for details".format(
-                        log=os.path.join(project, logfname)
-                    )
-                    Error = True
-                    break
+                    mt = "- {name}({spec}) has missing dependencies: ".format(name=s.name, spec=s.specfname)
+                    mt += " ".join(s.missing)
+                    missing_txt.append(mt)
+                    skipped.append(k)
+
+            if system_provided.was_checking():
+                print()
+                system_provided.write_cache()
+
+            if len(missing_txt) > 0:
+                missing_txt.sort()
+                print("\n".join(missing_txt))
+
+            tomake.sort()
+            skipped.sort()
+
+            # summarize findings
+            print()
+            print("Packages included into the current build:", " ".join(tomake))
+
+            # generate Makefile
+            main_deps = ""
+
+            make = "# This is generated Makefile and can be overwritten by a script\n\n"
+            make += "all: all_packages\n\n"
+
+            main_deps += " ".join([target_spec(specs[s].specfname, tool) for s in tomake]) + " "
+
+            # create directories
+            make += make_dir(builddir(tool))
+            make += make_dir(targetdir(tool))
+            make += make_dir(rpmdir(rpmrootdir, tool))
+
+            for k, s in specs.items():
+                # skip packages that we cannot build yet
+                if k not in tomake:
+                    continue
+
+                make += s.make_spec(
+                    local_provided=local_provided,
+                    tool=tool,
+                    rpmroot=rpmrootdir,
+                    buildoptions=buildoptions,
+                    macros=macros,
+                    insource=(s.specfname not in shadow_builds),
+                )
+
+            make += "all_packages: %s\n\t@echo\n\t@echo All done\n\t@echo\n\n" % main_deps
+
+            # disable parallel execution
+            make += ".NOTPARALLEL:\n\n"
+
+            # write Makefile
+            makefname = os.path.join(bdir, "Makefile")
+            with open(makefname, "w") as f:
+                f.write(make)
+
+            # start make in the background
+            logfname = os.path.join(logdir(tool), "build.log")
+            print(
+                "\nStarting build with the log available at",
+                os.path.join(project, logfname),
+                "\n",
+            )
+            with open(logfname, "w") as flog:
+                po = subprocess.Popen(
+                    ["make", "-f", makefname],
+                    bufsize=0,
+                    stdout=flog,
+                    stderr=subprocess.STDOUT,
+                )
+                result = po.wait()
+                if result != 0:
+                    # let's see if it was triggered
+                    flag = current_build_successful_flag(tool)
+                    if os.path.exists(flag):
+                        with open(flag, "r") as fflag:
+                            package_last = fflag.read()
+                        print("Build successful:", package_last)
+                    else:
+                        print("Error while running Make. See log for details")
+                        summary[tool] = "Error while running Make. See {log} for details".format(
+                            log=os.path.join(project, logfname)
+                        )
+                        Error = True
+                        break
+                else:
+                    print("Build successful\n")
+
+            # current summary for this toolkit
+            summary[tool] = (
+                "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped) + "\n"
+            )
+
+            # update conditions
+            first_iteration = False
+            changed = targets_state.update()
+            if not changed:
+                print("Nothing new, stopping for target", tool, "\n")
+                Done = True
             else:
-                print("Build successful\n")
+                print("Targets changed or updated, continue building\n")
 
-        # current summary for this toolkit
-        summary[tool] = (
-            "Build packages: " + " ".join(tomake) + "\n\nSkipped packages: " + " ".join(skipped) + "\n"
-        )
+        # generate repo data after the build
+        print("Install createrepo if it is missing")
+        commands.install_package(tool, "createrepo_c")
+        commands.createrepo(tool, rpmdir(rpmrootdir, tool))
 
-        # update conditions
-        first_iteration = False
-        changed = targets_state.update()
-        if not changed:
-            print("Nothing new, stopping for target", tool, "\n")
-            Done = True
-        else:
-            print("Targets changed or updated, continue building\n")
+        # list packages in the order they were built
+        ready = [
+            (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec"))
+        ]
+        ready.sort()
+        summary[tool] += "\nPackages were built in the following order:\n"
+        for p in ready:
+            summary[tool] += datetime.datetime.fromtimestamp(p[0]).strftime("%x %X") + " " + p[1] + "\n"
 
-    # generate repo data after the build
-    print("Install createrepo if it is missing")
-    commands.install_package(tool, "createrepo_c")
-    commands.createrepo(tool, rpmdir(rpmrootdir, tool))
+        if Error:
+            break
 
-    # list packages in the order they were built
-    ready = [
-        (os.stat(t).st_mtime, os.path.basename(t)) for t in glob.glob(os.path.join(targetdir(tool), "*.spec"))
-    ]
-    ready.sort()
-    summary[tool] += "\nPackages were built in the following order:\n"
-    for p in ready:
-        summary[tool] += datetime.datetime.fromtimestamp(p[0]).strftime("%x %X") + " " + p[1] + "\n"
+    print("\nAll builds finished\n")
+
+    for t, s in summary.items():
+        print(t, "\n")
+        print(s, "\n\n")
 
     if Error:
-        break
-
-print("\nAll builds finished\n")
-
-for t, s in summary.items():
-    print(t, "\n")
-    print(s, "\n\n")
-
-if Error:
-    sys.exit(7)
+        sys.exit(7)
