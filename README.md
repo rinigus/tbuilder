@@ -1,8 +1,8 @@
 # TBuilder
 
 This is a builder for projects defined by multiple RPM SPECs. It is
-targeting Sailfish OS and is using `mb2/sb2` or `sfdk` provided by
-Sailfish OS Application or Platform SDKs.
+targeting Sailfish OS and is using 
+[docker-sailfishos-builder containers](https://github.com/sailfishos-open/docker-sailfishos-builder).
 
 ## Use
 
@@ -23,7 +23,7 @@ build packages:
 
 ```
 cd project
-../tbuilder .
+tbuilder .
 ```
 
 ## Configuration
@@ -42,64 +42,17 @@ The following fields are required:
 
 The following fields are optional:
 
-* `options` (list of strings) specify project options. Currently, the
-  following options can be set:
-  * `allow-vendor-change` Allow to change vendor while installing packages
-    from project RPMS directory
-  * `keep-release-from-spec` Keep release as specified in SPEC file
-
-* `buildoptions` (string) additional options to pass to `sfdk
-  build`. For example, `-j4`.
-
-* `install` (list of strings) list of packages that are installed into
-  the target during a build. Errors during installation are ignored
-  and installation is attempted on every iteration of the build. This
-  list allows you to specify packages that are needed for processing
-  SPECs or are otherwise in the conflict with the installed target
-  packages.
-
-* `macros` (list of strings) macros considered while parsing RPM SPEC
-  and during the build.
-
-* `shadow_builds` (list of strings) SPEC packages that will be built
-  using shadow builds approach (see SDK documentation).
-
-* `skip_rpms` (list of strings) regex expressions that are matched
-  against compiled RPM file basenames. If the filename matches (Python
-  re.match) then the corresponding RPM is not loaded and its provided
-  symbols are not considered. Useful for larger builds with some of
-  RPMs not used a build dependencies for others.
+* `repositories` (list of strings) specify additional repositories required by the 
+  project. Strings are processed by replacing @VERSION@ and @ARCH@ with the 
+  target SFOS version and architecture, respectively. Ex: add 
+  "https://repo.sailfishos.org/obs/sailfishos:/chum/@VERSION@_@ARCH@/" for Chum.
 
 
 ## Requirements
 
 Requirements are
 
-- If using from host PC, `sfdk` available in the PATH and
-  working. Consider adding symlink from some standard PATH directory
-  to Sailfish SDO `bin/sfdk`. Check that `sfdk` works, see
-  [Tutorial](https://sailfishos.org/wiki/Tutorial_-_Building_packages_-_advanced_techniques)
-  for description.
+- `podman`
 
-- If run from SDK shell, mb2/sb2 will be used. Note that you would
-  have to install `make` into that shell as `make` is not installed by
-  default in Application SDK. For that, login as root and run `zypper
-  in make`.
+- downloaded target containers from https://github.com/sailfishos-open/docker-sailfishos-builder
 
-
-## Caches
-
-To speed up the builds, there are several caches used:
-
-- `build/target/cache.yaml` Lists present and missing build requirements
-  in the target itself. If you change the target, such as add new
-  repositories, please remove this cache to get all requirements
-  checked again.
-
-- `build/target/cache_rpm.yaml` RPMs that are built in the project and
-  were found to be installable in the target. It is assumed that if it
-  was possible to install an RPM in the target once, it is possible to
-  do so later as well. This allows to skip the corresponding check
-  later in the build sequence. If for some reason you think that this
-  condition is not satisfied after your updates, remove that cache and
-  let TBuilder to regenerate it.
