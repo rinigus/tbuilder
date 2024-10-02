@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+buildrpm $*
+rpm -qa > /dependencies/rpmlist

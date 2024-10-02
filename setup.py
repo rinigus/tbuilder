@@ -17,6 +17,9 @@ setup(
             "tbuilder = tbuilder.app:main",
         ],
     },
+    package_data={
+        'tbuilder': ['scripts/*.sh'],
+    },
     install_requires=[
         "pyyaml"
     ],
