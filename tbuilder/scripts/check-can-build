@@ -1,0 +1,62 @@
+#!/bin/bash
+
+set -e
+
+output_file="can-build.txt"
+
+# Parse command line options
+while getopts "o:r:" opt; do
+  case ${opt} in
+    o)
+      output_file=$OPTARG
+      ;;
+    r)
+	  arg="$OPTARG"
+	  echo "Adding repository $arg"
+	  zypper ar --gpgcheck-allow-unsigned $arg repo-$OPTIND
+	  echo
+	  ;;
+    *)
+      echo "Usage: $0 [-o output_file] [-r repository] file1 file2 ..."
+      exit 1
+      ;;
+  esac
+done
+
+# reset output file
+cp /dev/null "$output_file"
+
+# Shift to remove options and leave only the files
+shift $((OPTIND - 1))
+
+# Check if at least one file is provided
+if [ "$#" -eq 0 ]; then
+    echo "Error: No files specified."
+    echo "Usage: $0 [-o output_file] file1 file2 ..."
+    exit 1
+fi
+
+files=("$@")
+
+# Iterate through the files
+for SPEC in "${files[@]}"; do
+    echo "Processing SPEC file: $SPEC"
+
+    DEPS=$(rpmspec --buildrequires -q $SPEC)
+
+    can_build=false
+    if [[ -z "$DEPS" ]]; then
+        can_build=true
+    else
+        can_build=true
+        zypper --non-interactive in --dry-run $DEPS || can_build=false
+    fi
+
+    if [[ "$can_build" == true ]]; then
+        echo "Can build $SPEC as all its dependencies are satisfied"
+        echo $SPEC >> $output_file
+    else
+        echo "Dependencies for $SPEC not found."
+    fi
+    echo
+done
