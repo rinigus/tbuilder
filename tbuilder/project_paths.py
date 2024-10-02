@@ -24,10 +24,6 @@ class ProjectPaths:
         return self.project / "build" / self.target
 
     @property
-    def logdir(self) -> Path:
-        return self._builddir_base / "log"
-
-    @property
     def rpmdir(self) -> Path:
         return self.project / self.rpmroot / self.target
 
@@ -40,5 +36,5 @@ class ProjectPaths:
         return self._builddir_base / "state"
 
     def _create_dirs(self):
-        for p in [self.logdir, self.rpmdir, self.statedir]:
+        for p in [self.rpmdir, self.statedir]:
             p.mkdir(parents=True, exist_ok=True)
