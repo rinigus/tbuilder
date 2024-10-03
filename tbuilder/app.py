@@ -104,7 +104,9 @@ def main():
                     Error = True
                     break
 
-                s.set_rpms(rpms)
+                # if parallelized, this section has to be revised to ensure
+                # that dependencies are handled correctly
+                s.set_rpms(rpms)                
                 project.update_dependencies(s, rpms_in_system)
                 print(f"{s} build successful")
 
