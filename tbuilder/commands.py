@@ -140,7 +140,7 @@ class Commands:
 
     @property
     def _docker_name(self) -> str:
-        return f"docker-sailfishos-builder-{self.arch}:{self.version}"
+        return f"ghcr.io/sailfishos-open/docker-sailfishos-builder-{self.arch}:{self.version}"
 
     @property
     def _repos(self) -> List[str]:
