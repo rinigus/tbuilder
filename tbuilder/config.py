@@ -18,7 +18,6 @@ class Config:
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
 
-        self.project_name = config.get("project", "")
         self.targets = config.get("targets", [])
         self.rpmrootdir = config.get("rpms", "")
         self.repositories = config.get("repositories", [])
@@ -33,9 +32,6 @@ class Config:
         self.repodir = "repodata"
 
         # check for required parameters
-        if len(self.project_name) < 1:
-            print("No project name specified in the project config.yaml")
-            sys.exit(-1)
         if len(self.targets) < 1:
             print("No targets specified in the project config.yaml")
             sys.exit(-1)

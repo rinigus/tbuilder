@@ -33,9 +33,6 @@ is given under `project` directory.
 
 The following fields are required:
 
-* `project` (string) giving a name of the project. The name is used
-  while creating snapshots during building by `sfdk`.
-
 * `targets` (list) with each target in the form version-arch . Ex: 4.6.0.13-aarch64
 
 * `rpms` (string) directory to store generated RPMs
