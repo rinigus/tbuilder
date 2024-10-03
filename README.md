@@ -48,11 +48,22 @@ The following fields are optional:
   "https://repo.sailfishos.org/obs/sailfishos:/chum/@VERSION@_@ARCH@/" for Chum.
 
 
-## Requirements
+## Requirements and installation
 
 Requirements are
 
-- `podman`
+- `podman` 
+- if CPU emulation is needed, QEMU configured to run the platforms of interest.
 
-- downloaded target containers from https://github.com/sailfishos-open/docker-sailfishos-builder
+For instructions, see [docker-sailfishos-builder](https://github.com/sailfishos-open/docker-sailfishos-builder).
+
+To install, create Python virtual environment and install via `pip`:
+
+```
+python -m venv
+. venv/bin/activate
+pip install git+https://github.com/rinigus/tbuilder.git
+```
+
+To build project, run `tbuilder .` in the project directory.
 
