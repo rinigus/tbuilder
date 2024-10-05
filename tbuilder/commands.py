@@ -161,4 +161,6 @@ class Commands:
         args.append(self._docker_name)
         args.extend(command)
         print(" ".join(args))
-        return subprocess.run(args).returncode == 0
+        r = subprocess.run(args).returncode
+        print()
+        return r == 0
