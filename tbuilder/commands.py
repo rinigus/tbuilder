@@ -130,11 +130,15 @@ class Commands:
                 print("\nError while building package\n")
                 sys.exit(-1)
 
+            rpms_in_system = [l.strip() for l in open(td / "rpmlist")]
+
+            # move RPMs
             rpms = []
             for rpm in rpmsdir.glob("*.rpm"):
-                rpms.append(shutil.copy(rpm, project_paths.rpmdir))
+                rpms.append(shutil.move(rpm, project_paths.rpmdir))
 
-            rpms_in_system = [l.strip() for l in open(td / "rpmlist")]
+            # cleanup
+            shutil.rmtree(rpmsdir)
 
             return rpms, rpms_in_system
 
