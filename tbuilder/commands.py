@@ -6,8 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from tbuilder import project_paths
-
 from .config import Config
 from .project_paths import ProjectPaths
 from .spec import Spec
@@ -131,7 +129,7 @@ class Commands:
                 print("\nError while building package\n")
                 sys.exit(-1)
 
-            rpms_in_system = [l.strip() for l in open(td / "rpmlist")]
+            rpms_in_system = [r.strip() for r in open(td / "rpmlist")]
 
             # move RPMs
             rpms = []

@@ -1,14 +1,6 @@
 import argparse
-import collections
-import copy
-import datetime
-import glob
 import os
-import re
-import shutil
-import subprocess
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .commands import Commands
@@ -17,8 +9,6 @@ from .project import Project
 from .project_paths import ProjectPaths
 
 
-##########################################################
-## main
 def main():
 
     parser = argparse.ArgumentParser(description="Generate project build files")
