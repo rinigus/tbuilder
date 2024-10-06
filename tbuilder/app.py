@@ -108,7 +108,7 @@ def main():
                 # that dependencies are handled correctly
                 s.set_rpms(rpms)
                 project.update_dependencies(s, rpms_in_system)
-                print(f"{s} build successful")
+                print(f"{s} build successful\n")
 
     if Error:
         print()

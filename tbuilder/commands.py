@@ -124,6 +124,7 @@ class Commands:
                     f"{td}:/dependencies",
                     f"./{project_paths.rpmdir}:/extra_repo",
                 ],
+                log_name=project_paths.logdir / f"{spec.name}.log",
             )
 
             if not isok:
@@ -154,13 +155,22 @@ class Commands:
             res.append(r.replace("@ARCH@", self.arch).replace("@VERSION@", self.version))
         return res
 
-    def _run_docker(self, command: List[str], volumes: List[str]) -> bool:
+    def _run_docker(self, command: List[str], volumes: List[str], log_name=None) -> bool:
         args = "podman run --rm -it".split()
         for v in volumes:
             args.extend(["-v", v])
         args.append(self._docker_name)
         args.extend(command)
         print(" ".join(args))
-        r = subprocess.run(args).returncode
+
+        project_paths = ProjectPaths()
+        with open(project_paths.current_log, "w") as log_file:
+            process = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
+            r = process.wait()
+
+        if log_name is not None:
+            print(f"Log: {log_name}")
+            shutil.copy(project_paths.current_log, log_name)
+
         print()
         return r == 0
