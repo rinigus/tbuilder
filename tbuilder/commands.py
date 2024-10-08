@@ -99,6 +99,7 @@ class Commands:
         with tempfile.TemporaryDirectory() as tmpdirname:
             td = Path(tmpdirname)
             project_paths = ProjectPaths()
+            config = Config()
 
             with pkg_resources.path("tbuilder.scripts", "build") as sp:
                 shutil.copy(sp, td)
@@ -108,9 +109,14 @@ class Commands:
             if rpmsdir.exists():
                 shutil.rmtree(rpmsdir)
 
+            # deal with repos
             cmd = "/dependencies/build -r file:///extra_repo".split()
             for r in self._repos:
                 cmd.extend(["-r", r])
+
+            # add vendor if needed
+            if config.vendor:
+                cmd.extend(["-v", config.vendor])
 
             specname = spec.spec_resolved_fname.name
             cmd.extend(["-s", specname])

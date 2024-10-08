@@ -21,12 +21,7 @@ class Config:
         self.targets = config.get("targets", [])
         self.rpmrootdir = config.get("rpms", "")
         self.repositories = config.get("repositories", [])
-        self.macros = config.get("macros", [])
-        self.project_options = config.get("options", [])
-        self.buildoptions = config.get("buildoptions", "")
-        self.shadow_builds = config.get("shadow_builds", [])
-        self.install_extra_packages = config.get("install", [])
-        self.skip_rpms = config.get("skip_rpms", [])
+        self.vendor = config.get("vendor", "")
 
         self.specdir = "spec"
         self.repodir = "repodata"
