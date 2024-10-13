@@ -22,6 +22,7 @@ class Config:
         self.rpmrootdir = config.get("rpms", "")
         self.repositories = config.get("repositories", [])
         self.vendor = config.get("vendor", "")
+        self.shallow_clones = config.get("shallow_clones", 0)
 
         self.specdir = "spec"
         self.repodir = "repodata"

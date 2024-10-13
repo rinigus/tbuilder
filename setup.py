@@ -21,7 +21,8 @@ setup(
         'tbuilder': ['scripts/*.sh'],
     },
     install_requires=[
-        "pyyaml"
+        "pyyaml",
+        "GitPython"
     ],
     language_level="3",
 )

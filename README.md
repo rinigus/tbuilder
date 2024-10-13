@@ -44,6 +44,13 @@ The following fields are optional:
   target SFOS version and architecture, respectively. Ex: add 
   "https://repo.sailfishos.org/obs/sailfishos:/chum/@VERSION@_@ARCH@/" for Chum.
 
+* `shallow_clones`: if set to non-zero (as `1`), tbuilder assumes that the submodules
+  in source directories are not checked out with full sources, but have only packaging
+  part. In this case, local sources will be ignored and used only to find out git remote
+  and corresponding commit ID. Found repository and commit ID will be used during the build
+  to download sources from the remote and build them. Such approach allows to reduce storage
+  requirements and can help to build larger projects.
+
 
 ## Requirements and installation
 

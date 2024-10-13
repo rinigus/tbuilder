@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+import git
+
 from .config import Config
 from .project_paths import ProjectPaths
 from .spec import Spec
@@ -117,6 +119,13 @@ class Commands:
             # add vendor if needed
             if config.vendor:
                 cmd.extend(["-v", config.vendor])
+
+            # handle shallow builds
+            if config.shallow_clones:
+                repo = git.Repo(spec.srcdir)
+                remote_url = next(repo.remote("origin").urls)
+                commit_id = repo.head.commit.hexsha
+                cmd.extend(["-d", f"{remote_url}:{commit_id}"])
 
             specname = spec.spec_resolved_fname.name
             cmd.extend(["-s", specname])
