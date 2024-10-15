@@ -160,14 +160,19 @@ class Commands:
         return res
 
     def _run_docker(self, command: List[str], volumes: List[str], log_name=None) -> bool:
+        config = Config()
+        project_paths = ProjectPaths()
+
+        # required for SELinux
+        vol_suffix = ":Z"
+
         args = "podman run --rm -it".split()
         for v in volumes:
-            args.extend(["-v", v])
+            args.extend(["-v", f"{v}{vol_suffix}"])
         args.append(self._docker_name)
         args.extend(command)
         print(" ".join(args))
 
-        project_paths = ProjectPaths()
         with open(project_paths.current_log, "w") as log_file:
             process = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
             r = process.wait()
