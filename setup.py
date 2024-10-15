@@ -18,7 +18,7 @@ setup(
         ],
     },
     package_data={
-        'tbuilder': ['scripts/*.sh'],
+        'tbuilder': ['scripts/*'],
     },
     install_requires=[
         "pyyaml",
