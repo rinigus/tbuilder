@@ -26,15 +26,6 @@ class Commands:
             return
         self._initialized = True
 
-        # check createrepo is with _c suffix
-        if shutil.which("createrepo_c") is not None:
-            self._createrepo = "createrepo_c"
-        elif shutil.which("createrepo") is not None:
-            self._createrepo = "createrepo"
-        else:
-            print("Cannot find createrepo")
-            sys.exit(-1)
-
     def set_target(self, target):
         self.target = target
         self.version, self.arch = target.split("-")
